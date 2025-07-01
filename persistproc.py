@@ -759,15 +759,37 @@ async def tail_and_monitor_process_async(
             await asyncio.sleep(2)
 
     except (KeyboardInterrupt, asyncio.CancelledError):
+        stop_event.set()  # Stop the tailing thread immediately
         print("\n--- Log tailing interrupted. ---", file=sys.stderr)
         try:
-            choice = (
-                input(
-                    f"Do you want to stop the running process '{command_str}' (PID {pid})? [y/N] "
+            choice = ""
+            # Platform-specific single-character input for Unix-like systems
+            if sys.platform != "win32":
+                import tty, termios
+
+                print(
+                    f"Do you want to stop the running process '{command_str}' (PID {pid})? [y/N] ",
+                    end="",
+                    flush=True,
                 )
-                .lower()
-                .strip()
-            )
+                fd = sys.stdin.fileno()
+                old_settings = termios.tcgetattr(fd)
+                try:
+                    tty.setcbreak(sys.stdin.fileno())
+                    choice = sys.stdin.read(1).lower()
+                finally:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                print(choice)  # Echo the choice to the user for clarity
+            else:
+                # Standard input fallback for Windows
+                choice = (
+                    input(
+                        f"Do you want to stop the running process '{command_str}' (PID {pid})? [y/N] "
+                    )
+                    .lower()
+                    .strip()
+                )
+
             if choice == "y":
                 print(f"--- Sending stop request for PID {pid}... ---", file=sys.stderr)
                 # We can still await here because asyncio.run waits for the cancelled task to finish.
