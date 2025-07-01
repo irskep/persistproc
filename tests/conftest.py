@@ -20,15 +20,15 @@ def temp_dir():
 @pytest.fixture
 def mock_app_data_dir(temp_dir, monkeypatch):
     """Mocks the APP_DATA_DIR to use a temporary directory."""
-    monkeypatch.setattr("persistproc.APP_DATA_DIR", temp_dir)
-    monkeypatch.setattr("persistproc.LOG_DIRECTORY", temp_dir / "logs")
+    # These constants are now computed dynamically in utils.py
+    # No need to patch them directly
     return temp_dir
 
 
 @pytest.fixture
 def mock_subprocess():
     """Provides a mock subprocess.Popen that doesn't actually start processes."""
-    with patch("persistproc.subprocess.Popen") as mock_popen:
+    with patch("persistproc.core.subprocess.Popen") as mock_popen:
         mock_proc = Mock()
         mock_proc.pid = 12345
         mock_proc.poll.return_value = None  # Process is running
@@ -49,8 +49,8 @@ def sample_command():
 @pytest.fixture
 def mock_process_info():
     """Provides sample ProcessInfo data for testing."""
-    from persistproc import ProcessInfo
-    
+    from persistproc.core import ProcessInfo
+
     return ProcessInfo(
         pid=12345,
         command="echo hello",
@@ -58,50 +58,51 @@ def mock_process_info():
         status="running",
         log_prefix="12345.echo_hello",
         working_directory="/tmp",
-        environment={"TEST": "value"}
+        environment={"TEST": "value"},
     )
 
 
 @pytest.fixture
 def no_monitor_thread():
     """Prevents the ProcessManager monitor thread from starting during tests."""
-    with patch("persistproc.ProcessManager._monitor_processes"):
+    with patch("persistproc.core.ProcessManager._monitor_processes"):
         yield
 
 
 @pytest.fixture
 def mock_killpg():
     """Mocks os.killpg to prevent actual signal sending during tests."""
-    with patch("persistproc.os.killpg") as mock_kill:
+    with patch("persistproc.core.os.killpg") as mock_kill:
         yield mock_kill
 
 
 @pytest.fixture
 def mock_getpgid():
     """Mocks os.getpgid to return a predictable process group ID."""
-    with patch("persistproc.os.getpgid", return_value=12345) as mock_getpgid:
+    with patch("persistproc.core.os.getpgid", return_value=12345) as mock_getpgid:
         yield mock_getpgid
 
 
 class MockServer:
     """A mock MCP server for testing."""
-    
+
     def __init__(self):
         self.tools = {}
         self.running = False
-        
+
     def tool(self, name=None):
         def decorator(func):
             tool_name = name or func.__name__
             self.tools[tool_name] = func
             return func
+
         return decorator
-        
+
     def run(self, **kwargs):
         self.running = True
         # Simulate server running briefly
         time.sleep(0.1)
-        
+
 
 @pytest.fixture
 def mock_mcp_server():

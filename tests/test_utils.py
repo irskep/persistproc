@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch
 from datetime import datetime, timezone
 
-from persistproc import get_iso_timestamp, escape_command, get_app_data_dir
+from persistproc.utils import get_iso_timestamp, escape_command, get_app_data_dir
 
 
 class TestUtilityFunctions:
@@ -11,11 +11,11 @@ class TestUtilityFunctions:
     def test_get_iso_timestamp(self):
         """Test ISO timestamp generation."""
         timestamp = get_iso_timestamp()
-        
+
         # Should be a valid ISO format string ending with Z
         assert timestamp.endswith("Z")
         assert "T" in timestamp
-        
+
         # Should be parseable back to datetime
         parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         assert parsed.tzinfo is not None
@@ -41,38 +41,41 @@ class TestUtilityFunctions:
         result = escape_command("")
         assert result == ""
 
-    @patch("persistproc.sys.platform", "darwin")
+    @patch("persistproc.utils.sys.platform", "darwin")
     def test_get_app_data_dir_macos(self):
         """Test app data directory on macOS."""
-        with patch("persistproc.Path.home") as mock_home:
+        with patch("persistproc.utils.Path.home") as mock_home:
             from pathlib import Path
+
             mock_home.return_value = Path("/Users/test")
             result = get_app_data_dir("testapp")
             assert str(result) == "/Users/test/Library/Application Support/testapp"
 
-    @patch("persistproc.sys.platform", "linux")
+    @patch("persistproc.utils.sys.platform", "linux")
     def test_get_app_data_dir_linux(self):
         """Test app data directory on Linux."""
-        with patch("persistproc.Path.home") as mock_home:
+        with patch("persistproc.utils.Path.home") as mock_home:
             from pathlib import Path
+
             mock_home.return_value = Path("/home/test")
             result = get_app_data_dir("testapp")
             assert str(result) == "/home/test/.local/share/testapp"
 
-    @patch("persistproc.sys.platform", "win32")
+    @patch("persistproc.utils.sys.platform", "win32")
     def test_get_app_data_dir_windows(self):
         """Test app data directory on Windows."""
-        with patch("persistproc.os.environ.get") as mock_env:
+        with patch("persistproc.utils.os.environ.get") as mock_env:
             mock_env.return_value = "C:\\Users\\test\\AppData\\Roaming"
             result = get_app_data_dir("testapp")
             assert "testapp" in str(result)
             assert "Roaming" in str(result)
 
-    @patch("persistproc.sys.platform", "freebsd")
+    @patch("persistproc.utils.sys.platform", "freebsd")
     def test_get_app_data_dir_fallback(self):
         """Test app data directory fallback for unknown platforms."""
-        with patch("persistproc.Path.home") as mock_home:
+        with patch("persistproc.utils.Path.home") as mock_home:
             from pathlib import Path
+
             mock_home.return_value = Path("/home/test")
             result = get_app_data_dir("testapp")
             assert str(result) == "/home/test/.testapp"

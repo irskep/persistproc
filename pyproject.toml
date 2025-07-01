@@ -30,14 +30,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["black", "pytest>=7.0", "pytest-asyncio>=0.21", "pytest-cov>=4.0"]
+dev = [
+    "black", 
+    "pytest>=7.0", 
+    "pytest-asyncio>=0.21", 
+    "pytest-cov>=4.0",
+    "pre-commit>=3.0.0"
+]
 
 [project.scripts]
-persistproc = "persistproc:main"
+persistproc = "persistproc.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/irskep/persistproc-mcp"
 "Bug Tracker" = "https://github.com/irskep/persistproc-mcp/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["persistproc.py"] 
+packages = ["persistproc"] 
