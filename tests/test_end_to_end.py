@@ -19,9 +19,8 @@ class TestEndToEnd:
         """Test the complete lifecycle of a real process."""
         pm = ProcessManager(temp_dir)
 
-        # Start a real process (using test_script.py)
-        test_script = Path(__file__).parent.parent / "test_script.py"
-        command = f"python {test_script} --early-exit"
+        # Start a real process using inline Python command
+        command = 'python -c "import time; print(\\"Test script started.\\"); [print(i) for i in range(1,4)]; print(\\"Early exit triggered.\\"); exit(0)"'
 
         pid = None
         try:
@@ -79,8 +78,7 @@ class TestEndToEnd:
         pm = ProcessManager(temp_dir)
 
         # Start a long-running process
-        test_script = Path(__file__).parent.parent / "test_script.py"
-        command = f"python {test_script}"  # No early exit - runs forever
+        command = 'python -c "import time; print(\\"Test script started.\\"); [time.sleep(0.1) for _ in range(1000)]"'
 
         pid = None
         new_pid = None
@@ -146,8 +144,7 @@ class TestEndToEnd:
         """Test that duplicate commands are detected correctly."""
         pm = ProcessManager(temp_dir)
 
-        test_script = Path(__file__).parent.parent / "test_script.py"
-        command = f"python {test_script}"
+        command = 'python -c "import time; print(\\"Test script started.\\"); [time.sleep(0.1) for _ in range(1000)]"'
 
         pid1 = None
         try:
@@ -179,8 +176,7 @@ class TestEndToEnd:
         """Test MCP server with real process management using direct tool simulation."""
         pm = ProcessManager(temp_dir)
 
-        test_script = Path(__file__).parent.parent / "test_script.py"
-        command = f"python {test_script} --early-exit"
+        command = 'python -c "import time; print(\\"Test script started.\\"); [print(i) for i in range(1,4)]; print(\\"Early exit triggered.\\"); exit(0)"'
 
         pid = None
         try:
@@ -262,8 +258,7 @@ class TestEndToEnd:
         """Test that log files contain expected content."""
         pm = ProcessManager(temp_dir)
 
-        test_script = Path(__file__).parent.parent / "test_script.py"
-        command = f"python {test_script} --early-exit"
+        command = 'python -c "import time; print(\\"Test script started.\\"); [print(i) for i in range(1,4)]; print(\\"Early exit triggered.\\"); exit(0)"'
 
         pid = None
         try:
@@ -378,8 +373,7 @@ print(f"TEST_VAR: {os.environ.get('TEST_VAR', 'NOT_SET')}")
         """Test retrieving process output via the get_process_output method."""
         pm = ProcessManager(temp_dir)
 
-        test_script = Path(__file__).parent.parent / "test_script.py"
-        command = f"python {test_script} --early-exit"
+        command = 'python -c "import time; print(\\"Test script started.\\"); [print(i) for i in range(1,4)]; print(\\"Early exit triggered.\\"); exit(0)"'
 
         pid = None
         try:
