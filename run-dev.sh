@@ -1,6 +1,15 @@
 #!/bin/bash
 set -e
 
+# Store the original directory so we can switch back to it later
+ORIGINAL_CWD=$(pwd)
+
+# Get the directory of this script so it can be run from anywhere
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+# Change to the script's directory to ensure relative paths work correctly for setup
+cd "$SCRIPT_DIR"
+
 # Create a virtual environment using uv if it doesn't exist
 if [ ! -d ".venv" ]; then
   echo "Creating virtual environment..."
@@ -15,6 +24,9 @@ uv pip install -e ".[dev]"
 
 echo "Formatting with black..."
 black .
+
+# Change back to the original directory before running the user's command
+cd "$ORIGINAL_CWD"
 
 echo "Running persistproc..."
 persistproc "$@" 
