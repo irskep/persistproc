@@ -541,8 +541,12 @@ Examples:
   # Start the MCP server in the background
   persistproc --serve &
 
-  # Run a command and tail its output
+  # Run a command and tail its output.
+  # If the command is already running, this will tail the existing process.
   persistproc sleep 30
+
+  # To force a restart if the command is already running:
+  persistproc --restart sleep 30
 
   # Run a command with quotes and tail its output
   persistproc "python -m http.server"
@@ -550,6 +554,11 @@ Examples:
     )
     parser.add_argument(
         "--serve", action="store_true", help="Run the PersistProc MCP server."
+    )
+    parser.add_argument(
+        "--restart",
+        action="store_true",
+        help="Restart the process if it's already running.",
     )
     parser.add_argument(
         "--host", default="127.0.0.1", help="Host to connect to or bind to."
@@ -601,40 +610,70 @@ async def run_and_tail_async(args: argparse.Namespace):
     try:
         client = Client(mcp_url)
         async with client:
-            # 1. Start the process
+            p_info = None
+
+            # First, attempt to start the process
             logger.debug(f"Requesting to start command: '{command_str}'")
             start_result = await client.call_tool(
                 "start_process",
                 {"command": command_str, "working_directory": os.getcwd()},
             )
+            start_info = json.loads(start_result[0].text)
 
-            p_info_str = start_result[0].text
-            p_info = json.loads(p_info_str)
-
-            if "error" in p_info:
-                error_msg = p_info["error"]
-                if "is already running with PID" in error_msg:
-                    pid_match = re.search(r"PID (\d+)", error_msg)
-                    if pid_match:
-                        existing_pid = int(pid_match.group(1))
-                        p_info = await handle_existing_process(
-                            client, existing_pid, command_str
-                        )
-                    else:
-                        logger.error(f"Server returned an error: {error_msg}")
-                        sys.exit(1)
-                else:
+            # Check if it was already running
+            if "error" in start_info and "is already running" in start_info["error"]:
+                pid_match = re.search(r"PID (\d+)", start_info["error"])
+                if not pid_match:
                     logger.error(
-                        f"Server returned an error on start: {p_info['error']}"
+                        f"Server error: Could not parse PID from error message: {start_info['error']}"
                     )
                     sys.exit(1)
 
-            pid = p_info.get("pid")
-            if not pid:
-                logger.error(f"Could not get PID from server response: {p_info_str}")
+                existing_pid = int(pid_match.group(1))
+
+                if args.restart:
+                    logger.info(
+                        f"Process '{command_str}' is running (PID {existing_pid}). Restarting as requested."
+                    )
+                    restart_result = await client.call_tool(
+                        "restart_process", {"pid": existing_pid}
+                    )
+                    p_info = json.loads(restart_result[0].text)
+                else:
+                    logger.info(
+                        f"Process '{command_str}' is already running with PID {existing_pid}."
+                    )
+                    logger.info(
+                        "Tailing existing logs. Use --restart to force a new process."
+                    )
+                    status_result = await client.call_tool(
+                        "get_process_status", {"pid": existing_pid}
+                    )
+                    p_info = json.loads(status_result[0].text)
+
+            # Check for other errors during start
+            elif "error" in start_info:
+                logger.error(
+                    f"Server returned an error on start: {start_info['error']}"
+                )
                 sys.exit(1)
 
-            logger.info(f"Process started with PID: {pid}")
+            # If no error, it's a fresh start
+            else:
+                logger.info(f"Starting process '{command_str}' for the first time.")
+                p_info = start_info
+
+            # Final check on the process info we ended up with
+            if not p_info or "error" in p_info:
+                logger.error(
+                    f"Failed to get a valid process state to monitor: {p_info.get('error', 'Unknown error')}"
+                )
+                sys.exit(1)
+
+            pid = p_info.get("pid")
+            if not pid:
+                logger.error(f"Could not get PID from server response: {p_info}")
+                sys.exit(1)
 
             # 2. Get log path
             logs_result = await client.call_tool("get_process_log_paths", {"pid": pid})
@@ -662,42 +701,6 @@ async def run_and_tail_async(args: argparse.Namespace):
         sys.exit(1)
 
 
-async def handle_existing_process(client: Client, pid: int, command_str: str) -> Dict:
-    """
-    Handles the interactive workflow when a process already exists.
-    Returns the process info dict to tail. This function loops until a valid choice is made.
-    """
-    while True:
-        choice = (
-            input(
-                f"\nProcess '{command_str}' is already running with PID {pid}.\n"
-                "Choose an action: [T]ail existing, [R]estart\n"
-                "> "
-            )
-            .lower()
-            .strip()
-        )
-
-        if choice in ["t", "tail"]:
-            logger.info(f"Tailing existing process {pid}.")
-            status_result = await client.call_tool("get_process_status", {"pid": pid})
-            return json.loads(status_result[0].text)
-
-        elif choice in ["r", "restart"]:
-            logger.info(f"Requesting restart for process {pid}...")
-            restart_result = await client.call_tool("restart_process", {"pid": pid})
-            p_info_str = restart_result[0].text
-            p_info = json.loads(p_info_str)
-            if "error" in p_info:
-                logger.error(f"Error restarting process: {p_info['error']}")
-                sys.exit(1)
-            new_pid = p_info.get("pid")
-            logger.info(f"Process restarted with new PID: {new_pid}")
-            return p_info
-        else:
-            print("Invalid choice. Please try again.")
-
-
 async def tail_and_monitor_process_async(
     client: Client, pid: int, command_str: str, log_path: Path
 ):
@@ -709,6 +712,7 @@ async def tail_and_monitor_process_async(
 
     print(f"--- Tailing output for PID {pid} ('{command_str}') ---", file=sys.stderr)
     print(f"--- Log file: {log_path} ---", file=sys.stderr)
+    print("--- Press Ctrl+C to stop tailing. ---", file=sys.stderr)
 
     stop_event = threading.Event()
 
@@ -740,6 +744,13 @@ async def tail_and_monitor_process_async(
                 )
                 p_status = json.loads(status_result[0].text)
                 if "error" in p_status or p_status.get("status") != "running":
+                    status = p_status.get("status", "unknown")
+                    exit_code = p_status.get("exit_code")
+                    message = f"Process {pid} is no longer running (status: {status}"
+                    if exit_code is not None:
+                        message += f", exit_code: {exit_code}"
+                    message += ")."
+                    logger.info(message)
                     break
             except Exception as e:
                 logger.debug(f"Could not poll process status: {e}")
@@ -747,13 +758,43 @@ async def tail_and_monitor_process_async(
 
             await asyncio.sleep(2)
 
-    except KeyboardInterrupt:
-        print("\n--- Caught interrupt, stopping process... ---", file=sys.stderr)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        print("\n--- Log tailing interrupted. ---", file=sys.stderr)
         try:
-            await client.call_tool("stop_process", {"pid": pid, "force": False})
-            print(f"--- Sent stop request for PID {pid} ---", file=sys.stderr)
+            choice = (
+                input(
+                    f"Do you want to stop the running process '{command_str}' (PID {pid})? [y/N] "
+                )
+                .lower()
+                .strip()
+            )
+            if choice == "y":
+                print(f"--- Sending stop request for PID {pid}... ---", file=sys.stderr)
+                # We can still await here because asyncio.run waits for the cancelled task to finish.
+                stop_result = await client.call_tool(
+                    "stop_process", {"pid": pid, "force": False}
+                )
+                stop_info = json.loads(stop_result[0].text)
+                if "error" in stop_info:
+                    logger.error(
+                        f"Failed to stop process: {stop_info['error']}", file=sys.stderr
+                    )
+                else:
+                    print("--- Stop request sent successfully. ---", file=sys.stderr)
+            else:
+                print(
+                    f"--- Leaving process PID {pid} running in the background. ---",
+                    file=sys.stderr,
+                )
+        except KeyboardInterrupt:
+            # This handles Ctrl+C being pressed during the input() prompt
+            print("\n--- Prompt aborted. Leaving process running. ---", file=sys.stderr)
         except Exception as e:
-            logger.error(f"Could not stop process {pid}: {e}", file=sys.stderr)
+            logger.error(
+                f"Could not communicate with server to stop process {pid}: {e}",
+                file=sys.stderr,
+            )
+
     finally:
         stop_event.set()
         tail_thread.join(timeout=2)
