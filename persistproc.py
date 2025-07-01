@@ -45,6 +45,7 @@ APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 # --- Constants ---
 LOG_DIRECTORY = APP_DATA_DIR / "logs"
 MAX_COMMAND_LEN = 50
+TIMESTAMP_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z ")
 
 # --- Logging Setup ---
 logger = logging.getLogger(__name__)
@@ -541,12 +542,11 @@ Examples:
   # Start the MCP server in the background
   persistproc --serve &
 
-  # Run a command and tail its output.
-  # If the command is already running, this will tail the existing process.
+  # Run a command and tail its output (raw script output is the default).
   persistproc sleep 30
 
-  # To force a restart if the command is already running:
-  persistproc --restart sleep 30
+  # To view the full, timestamped log file output:
+  persistproc --raw sleep 30
 
   # Run a command with quotes and tail its output
   persistproc "python -m http.server"
@@ -568,6 +568,11 @@ Examples:
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose logging."
+    )
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Display the raw, timestamped log file content instead of the clean process output.",
     )
     parser.add_argument(
         "command",
@@ -696,7 +701,7 @@ async def run_and_tail_async(args: argparse.Namespace):
 
             # 3. Tail the log file
             await tail_and_monitor_process_async(
-                client, pid, command_str, combined_log_path
+                client, pid, command_str, combined_log_path, args.raw
             )
 
     except Exception as e:
@@ -708,7 +713,11 @@ async def run_and_tail_async(args: argparse.Namespace):
 
 
 async def tail_and_monitor_process_async(
-    client: Client, pid: int, command_str: str, log_path: Path
+    client: Client,
+    pid: int,
+    command_str: str,
+    log_path: Path,
+    show_raw_log: bool = False,
 ):
     """Tails a log file while monitoring the corresponding process for completion."""
     while not log_path.exists():
@@ -722,10 +731,20 @@ async def tail_and_monitor_process_async(
 
     stop_event = threading.Event()
 
-    def tail_worker():
+    def _process_line_for_raw_output(line: str) -> Optional[str]:
+        if "[SYSTEM]" in line:
+            return None  # Suppress system logs in raw mode
+
+        # Use re.sub to remove only the prefix, which is cleaner than
+        # managing capture groups that might eat the trailing newline.
+        return TIMESTAMP_REGEX.sub("", line, count=1)
+
+    def tail_worker(raw_log: bool):
         # First, print any existing content in the file
         for line in log_file:
-            sys.stdout.write(line)
+            output_line = line if raw_log else _process_line_for_raw_output(line)
+            if output_line is not None:
+                sys.stdout.write(output_line)
         sys.stdout.flush()
 
         # Now, tail for new content
@@ -734,11 +753,16 @@ async def tail_and_monitor_process_async(
             if not line:
                 time.sleep(0.1)  # Avoid busy-waiting
                 continue
-            sys.stdout.write(line)
-            sys.stdout.flush()
+
+            output_line = line if raw_log else _process_line_for_raw_output(line)
+            if output_line is not None:
+                sys.stdout.write(output_line)
+                sys.stdout.flush()
         log_file.close()
 
-    tail_thread = threading.Thread(target=tail_worker, daemon=True)
+    tail_thread = threading.Thread(
+        target=tail_worker, args=(show_raw_log,), daemon=True
+    )
     tail_thread.start()
 
     try:

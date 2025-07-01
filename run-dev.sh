@@ -34,4 +34,16 @@ black .
 cd "$ORIGINAL_CWD"
 
 echo "Running persistproc..."
-persistproc "$@" 
+
+# Separate the --raw flag from the command arguments
+persistproc_flags=()
+command_args=()
+for arg in "$@"; do
+    if [[ "$arg" == "--raw" ]]; then
+        persistproc_flags+=("--raw")
+    else
+        command_args+=("$arg")
+    fi
+done
+
+persistproc "${persistproc_flags[@]}" "${command_args[@]}" 
