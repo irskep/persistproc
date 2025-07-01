@@ -67,6 +67,7 @@ def setup_logging(verbose: bool = False):
     log.addHandler(console_handler)
 
     # File handler for persistproc.log with detailed, ISO-formatted timestamps
+    LOG_DIRECTORY.mkdir(exist_ok=True)
     log_file_path = LOG_DIRECTORY / "persistproc.log"
     file_handler = logging.FileHandler(log_file_path)
     iso_formatter = logging.Formatter(
