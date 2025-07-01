@@ -201,10 +201,41 @@ class ProcessManager:
         if p_info.status != "running":
             raise ValueError(f"Process {pid} is not running (status: {p_info.status}).")
 
-        sig = signal.SIGKILL if force else signal.SIGTERM
         try:
-            os.killpg(os.getpgid(pid), sig)
-            self._log_event(p_info, f"Sent signal {sig.name} to process group {pid}.")
+            if os.name == "posix":
+                # Unix/Linux/macOS - use process groups
+                sig = signal.SIGKILL if force else signal.SIGTERM
+                os.killpg(os.getpgid(pid), sig)
+                self._log_event(
+                    p_info, f"Sent signal {sig.name} to process group {pid}."
+                )
+            else:
+                # Windows - use process object if available, otherwise kill by PID
+                if p_info.proc and p_info.proc.poll() is None:
+                    if force:
+                        p_info.proc.kill()
+                        self._log_event(p_info, f"Killed process {pid} (force).")
+                    else:
+                        p_info.proc.terminate()
+                        self._log_event(p_info, f"Terminated process {pid}.")
+                else:
+                    # Fallback: try to kill by PID
+                    import subprocess
+
+                    if force:
+                        subprocess.run(
+                            ["taskkill", "/F", "/PID", str(pid)], capture_output=True
+                        )
+                        self._log_event(
+                            p_info, f"Force-killed process {pid} via taskkill."
+                        )
+                    else:
+                        subprocess.run(
+                            ["taskkill", "/PID", str(pid)], capture_output=True
+                        )
+                        self._log_event(
+                            p_info, f"Terminated process {pid} via taskkill."
+                        )
         except ProcessLookupError:
             self._log_event(p_info, "Process was already gone when stop was requested.")
         except Exception as e:

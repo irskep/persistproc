@@ -49,7 +49,9 @@ class TestUtilityFunctions:
 
             mock_home.return_value = Path("/Users/test")
             result = get_app_data_dir("testapp")
-            assert str(result) == "/Users/test/Library/Application Support/testapp"
+            # Use Path comparison to avoid slash direction issues
+            expected = Path("/Users/test/Library/Application Support/testapp")
+            assert result == expected
 
     @patch("persistproc.utils.sys.platform", "linux")
     def test_get_app_data_dir_linux(self):
@@ -59,7 +61,8 @@ class TestUtilityFunctions:
 
             mock_home.return_value = Path("/home/test")
             result = get_app_data_dir("testapp")
-            assert str(result) == "/home/test/.local/share/testapp"
+            expected = Path("/home/test/.local/share/testapp")
+            assert result == expected
 
     @patch("persistproc.utils.sys.platform", "win32")
     def test_get_app_data_dir_windows(self):
@@ -78,4 +81,5 @@ class TestUtilityFunctions:
 
             mock_home.return_value = Path("/home/test")
             result = get_app_data_dir("testapp")
-            assert str(result) == "/home/test/.testapp"
+            expected = Path("/home/test/.testapp")
+            assert result == expected

@@ -71,9 +71,13 @@ def no_monitor_thread():
 
 @pytest.fixture
 def mock_killpg():
-    """Mocks os.killpg to prevent actual signal sending during tests."""
-    with patch("persistproc.core.os.killpg") as mock_kill:
-        yield mock_kill
+    """Mocks process killing to prevent actual signal sending during tests."""
+    # Mock both Unix and Windows process killing
+    with (
+        patch("persistproc.core.os.killpg") as mock_kill_unix,
+        patch("persistproc.core.subprocess.run") as mock_subprocess_run,
+    ):
+        yield mock_kill_unix
 
 
 @pytest.fixture
