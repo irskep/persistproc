@@ -1,8 +1,3 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# dependencies = ["fastmcp"]
-# ///
-
 import argparse
 import asyncio
 import json
@@ -609,16 +604,31 @@ async def run_and_tail_async(args: argparse.Namespace):
             # 1. Start the process
             logger.debug(f"Requesting to start command: '{command_str}'")
             start_result = await client.call_tool(
-                "start_process", {"command": command_str}
+                "start_process",
+                {"command": command_str, "working_directory": os.getcwd()},
             )
 
             p_info_str = start_result[0].text
-            if "error" in p_info_str:
-                p_info = json.loads(p_info_str)
-                logger.error(f"Server returned an error on start: {p_info['error']}")
-                sys.exit(1)
-
             p_info = json.loads(p_info_str)
+
+            if "error" in p_info:
+                error_msg = p_info["error"]
+                if "is already running with PID" in error_msg:
+                    pid_match = re.search(r"PID (\d+)", error_msg)
+                    if pid_match:
+                        existing_pid = int(pid_match.group(1))
+                        p_info = await handle_existing_process(
+                            client, existing_pid, command_str
+                        )
+                    else:
+                        logger.error(f"Server returned an error: {error_msg}")
+                        sys.exit(1)
+                else:
+                    logger.error(
+                        f"Server returned an error on start: {p_info['error']}"
+                    )
+                    sys.exit(1)
+
             pid = p_info.get("pid")
             if not pid:
                 logger.error(f"Could not get PID from server response: {p_info_str}")
@@ -650,6 +660,42 @@ async def run_and_tail_async(args: argparse.Namespace):
         )
         logger.debug(f"Connection details: {e}")
         sys.exit(1)
+
+
+async def handle_existing_process(client: Client, pid: int, command_str: str) -> Dict:
+    """
+    Handles the interactive workflow when a process already exists.
+    Returns the process info dict to tail. This function loops until a valid choice is made.
+    """
+    while True:
+        choice = (
+            input(
+                f"\nProcess '{command_str}' is already running with PID {pid}.\n"
+                "Choose an action: [T]ail existing, [R]estart\n"
+                "> "
+            )
+            .lower()
+            .strip()
+        )
+
+        if choice in ["t", "tail"]:
+            logger.info(f"Tailing existing process {pid}.")
+            status_result = await client.call_tool("get_process_status", {"pid": pid})
+            return json.loads(status_result[0].text)
+
+        elif choice in ["r", "restart"]:
+            logger.info(f"Requesting restart for process {pid}...")
+            restart_result = await client.call_tool("restart_process", {"pid": pid})
+            p_info_str = restart_result[0].text
+            p_info = json.loads(p_info_str)
+            if "error" in p_info:
+                logger.error(f"Error restarting process: {p_info['error']}")
+                sys.exit(1)
+            new_pid = p_info.get("pid")
+            logger.info(f"Process restarted with new PID: {new_pid}")
+            return p_info
+        else:
+            print("Invalid choice. Please try again.")
 
 
 async def tail_and_monitor_process_async(
@@ -713,7 +759,9 @@ async def tail_and_monitor_process_async(
         tail_thread.join(timeout=2)
 
 
-if __name__ == "__main__":
+def main():
+    """Parses arguments and runs the appropriate application mode."""
+    global process_manager
     parser, args = parse_args()
     setup_logging(args.verbose)
 
@@ -737,3 +785,7 @@ if __name__ == "__main__":
     else:
         parser.print_help()
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
