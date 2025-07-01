@@ -116,13 +116,33 @@ For example, you can later ask an agent in Claude Code:
 The agent will see the running processes via `list_processes()` and can call `restart_process(pid=...)` to perform the action. No more port conflicts. No more manual restarts.
 
 ## Direct Terminal Usage (Optional)
-While the main power comes from agent integration, you can also use the `persistproc` command as a simple client from your own terminal. This is useful for starting a process and immediately tailing its logs in one go:
+While the main power comes from agent integration, you can also use the `persistproc` command as a simple client from your own terminal.
+
+### Starting and Tailing
+This is useful for starting a process and immediately tailing its logs in one go:
 
 ```bash
 # In iTerm, for example:
 persistproc npm run dev
 ```
-Press `Ctrl+C` to stop tailing the logs. The process will **keep running** in the background, managed by the server. To manage this process (e.g., restart or stop it), you would typically use an integrated AI agent that can call the appropriate MCP tools.
+- If `npm run dev` is not running, `persistproc` will start it.
+- If `npm run dev` is *already* running, `persistproc` will simply start tailing the logs of the existing process and notify you.
+
+To force a restart of an already-running process, use the `--restart` flag:
+```bash
+persistproc --restart npm run dev
+```
+
+### Stopping a Tailed Process
+When you are tailing a process, pressing `Ctrl+C` will stop the log stream and present you with a prompt:
+
+```
+--- Log tailing interrupted. ---
+Do you want to stop the running process 'npm run dev' (PID 12345)? [y/N]
+```
+
+- Pressing `y` will send a termination signal to the process, shutting it down.
+- Pressing `n` (or any other key) will only detach the log tail, leaving the process **running** in the background, where it can still be managed by other agents.
 
 ## Advanced Management
 
@@ -138,25 +158,7 @@ The server exposes the following tools:
 
 ## Development
 
-Interested in contributing? We'd love your help!
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/irskep/persistproc-mcp.git
-    cd persistproc-mcp
-    ```
-
-2.  **Set up the environment:**
-    This project uses `uv` for environment and package management.
-    ```bash
-    uv venv && source .venv/bin/activate
-    uv pip install -e .
-    ```
-
-3.  **Run the server:**
-    ```bash
-    persistproc --serve
-    ```
+Use `./run-dev.sh` to install dependencies in a virtualenv and run `persistproc`.
 
 ## License
 

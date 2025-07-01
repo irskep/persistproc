@@ -29,6 +29,9 @@ dependencies = [
     "fastmcp==2.9.2",
 ]
 
+[project.optional-dependencies]
+dev = ["black"]
+
 [project.scripts]
 persistproc = "persistproc:main"
 

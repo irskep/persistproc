@@ -11,7 +11,10 @@ fi
 source .venv/bin/activate
 
 echo "Installing dependencies..."
-uv pip install -e .
+uv pip install -e ".[dev]"
+
+echo "Formatting with black..."
+black .
 
 echo "Running persistproc..."
 persistproc "$@" 
