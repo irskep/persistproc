@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Activate mise if it's installed to ensure we use the correct tool versions
+if command -v mise &> /dev/null; then
+  eval "$(mise activate bash)"
+fi
+
 # Store the original directory so we can switch back to it later
 ORIGINAL_CWD=$(pwd)
 
