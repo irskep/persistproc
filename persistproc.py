@@ -611,12 +611,18 @@ async def run_and_tail_async(args: argparse.Namespace):
         client = Client(mcp_url)
         async with client:
             p_info = None
+            # Capture the calling environment to ensure commands are found on the server
+            call_env = dict(os.environ)
 
             # First, attempt to start the process
             logger.debug(f"Requesting to start command: '{command_str}'")
             start_result = await client.call_tool(
                 "start_process",
-                {"command": command_str, "working_directory": os.getcwd()},
+                {
+                    "command": command_str,
+                    "working_directory": os.getcwd(),
+                    "environment": call_env,
+                },
             )
             start_info = json.loads(start_result[0].text)
 
