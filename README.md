@@ -95,7 +95,18 @@ In your editor's `settings.json` file, add the following to the `mcp.servers` co
   }
 }
 ```
-Now, agents in Cursor can see and interact with `persistproc`.
+
+#### Claude Code
+To add `persistproc` as an MCP server for Claude Code, you first need to have the `persistproc` server running separately:
+```bash
+persistproc --serve
+```
+Then, in another terminal, run the following command to tell Claude where to find the running server:
+
+```bash
+claude mcp add --transport http persistproc http://127.0.0.1:8947/mcp/
+```
+Now, agents in Cursor and Claude Code can see and interact with `persistproc`.
 
 ### 3. Let Your Agents Start Processes
 This is the primary way to start processes. Instead of running commands yourself, you ask your agent to do it.
