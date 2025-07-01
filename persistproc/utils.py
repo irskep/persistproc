@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 def get_app_data_dir(app_name: str) -> Path:
-    """Gets the platform-specific application data directory."""
+    """Gets the Unix-specific application data directory."""
     if sys.platform == "darwin":  # macOS
         return Path.home() / "Library" / "Application Support" / app_name
     elif sys.platform.startswith("linux"):  # Linux
@@ -23,12 +23,7 @@ def get_app_data_dir(app_name: str) -> Path:
         if xdg_data_home:
             return Path(xdg_data_home) / app_name
         return Path.home() / ".local" / "share" / app_name
-    elif sys.platform == "win32":  # Windows
-        appdata = os.environ.get("APPDATA")
-        if appdata:
-            return Path(appdata) / app_name
-        return Path.home() / "AppData" / "Roaming" / app_name
-    # Fallback for other operating systems
+    # Fallback for Unix-like systems
     return Path.home() / f".{app_name}"
 
 

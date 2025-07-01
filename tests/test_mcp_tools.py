@@ -90,9 +90,7 @@ class TestMCPTools:
             assert any(p["pid"] == 12345 for p in result_data)
             assert any(p["pid"] == 67890 for p in result_data)
 
-    def test_stop_process_tool_direct(
-        self, process_manager_mock, mock_killpg, mock_getpgid
-    ):
+    def test_stop_process_tool_direct(self, process_manager_mock, mock_killpg):
         """Test stop_process tool function directly."""
         with patch.object(server, "process_manager", process_manager_mock, create=True):
             # Add a running process
@@ -118,7 +116,7 @@ class TestMCPTools:
                 result_data = json.loads(result)
 
                 assert result_data["pid"] == 12345
-                mock_killpg.assert_called_once()
+                mock_killpg["unix_kill"].assert_called_once()
 
     def test_get_process_status_tool_direct(self, process_manager_mock):
         """Test get_process_status tool function directly."""
@@ -190,7 +188,7 @@ class TestMCPTools:
             assert "12345.echo_hello" in result_data["stdout"]
 
     def test_restart_process_tool_direct(
-        self, process_manager_mock, mock_subprocess, mock_killpg, mock_getpgid
+        self, process_manager_mock, mock_subprocess, mock_killpg
     ):
         """Test restart_process tool function directly."""
         mock_popen, mock_proc = mock_subprocess

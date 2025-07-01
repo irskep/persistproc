@@ -77,9 +77,7 @@ class TestProcessManager:
             with pytest.raises(ValueError, match="Command not found"):
                 pm.start_process("nonexistent_command")
 
-    def test_stop_process_success(
-        self, temp_dir, no_monitor_thread, mock_killpg, mock_getpgid
-    ):
+    def test_stop_process_success(self, temp_dir, no_monitor_thread, mock_killpg):
         """Test successful process stop."""
         pm = ProcessManager(temp_dir)
 
@@ -100,15 +98,13 @@ class TestProcessManager:
             result = pm.stop_process(12345)
 
             # Verify signal was sent
-            mock_getpgid.assert_called_once_with(12345)
-            mock_killpg.assert_called_once_with(12345, signal.SIGTERM)
+            mock_killpg["getpgid"].assert_called_once_with(12345)
+            mock_killpg["unix_kill"].assert_called_once_with(12345, signal.SIGTERM)
 
             # Verify return value
             assert result["pid"] == 12345
 
-    def test_stop_process_force(
-        self, temp_dir, no_monitor_thread, mock_killpg, mock_getpgid
-    ):
+    def test_stop_process_force(self, temp_dir, no_monitor_thread, mock_killpg):
         """Test forceful process stop."""
         pm = ProcessManager(temp_dir)
 
@@ -126,7 +122,7 @@ class TestProcessManager:
             pm.stop_process(12345, force=True)
 
             # Verify SIGKILL was sent
-            mock_killpg.assert_called_once_with(12345, signal.SIGKILL)
+            mock_killpg["unix_kill"].assert_called_once_with(12345, signal.SIGKILL)
 
     def test_stop_process_not_found(self, temp_dir, no_monitor_thread):
         """Test stopping non-existent process."""
@@ -152,7 +148,7 @@ class TestProcessManager:
         with pytest.raises(ValueError, match="not running"):
             pm.stop_process(12345)
 
-    def test_stop_process_already_gone(self, temp_dir, no_monitor_thread, mock_getpgid):
+    def test_stop_process_already_gone(self, temp_dir, no_monitor_thread, mock_killpg):
         """Test stopping process that's already gone."""
         pm = ProcessManager(temp_dir)
 
@@ -232,7 +228,7 @@ class TestProcessManager:
             pm.get_process_status(99999)
 
     def test_restart_process_pattern(
-        self, temp_dir, no_monitor_thread, mock_subprocess, mock_killpg, mock_getpgid
+        self, temp_dir, no_monitor_thread, mock_subprocess, mock_killpg
     ):
         """Test restarting a process using the same pattern as MCP tools."""
         mock_popen, mock_proc = mock_subprocess
@@ -268,7 +264,7 @@ class TestProcessManager:
                 new_result = pm.start_process(command, wd, env)
 
                 # Should stop old process
-                mock_killpg.assert_called_once()
+                mock_killpg["unix_kill"].assert_called_once()
 
                 # Should start new process
                 mock_popen.assert_called_once()

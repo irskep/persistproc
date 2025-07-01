@@ -6,8 +6,17 @@ signal handling for graceful shutdown.
 """
 
 import logging
+import os
 import signal
 import sys
+
+# Check for Unix-like system
+if os.name != "posix":
+    print(
+        "Error: persistproc only supports Unix-like systems (Linux, macOS, BSD)",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 from fastmcp import FastMCP
 

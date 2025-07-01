@@ -5,7 +5,16 @@ This module serves as the main entry point when running `python -m persistproc`.
 It handles argument parsing and dispatches to either server or client modes.
 """
 
+import os
 import sys
+
+# Check for Unix-like system
+if os.name != "posix":
+    print(
+        "Error: persistproc only supports Unix-like systems (Linux, macOS, BSD)",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 from .cli import parse_args, run_client
 from .server import run_server

@@ -71,20 +71,15 @@ def no_monitor_thread():
 
 @pytest.fixture
 def mock_killpg():
-    """Mocks process killing to prevent actual signal sending during tests."""
-    # Mock both Unix and Windows process killing
+    """Mocks Unix process killing."""
     with (
         patch("persistproc.core.os.killpg") as mock_kill_unix,
-        patch("persistproc.core.subprocess.run") as mock_subprocess_run,
+        patch("persistproc.core.os.getpgid", return_value=12345) as mock_getpgid,
     ):
-        yield mock_kill_unix
-
-
-@pytest.fixture
-def mock_getpgid():
-    """Mocks os.getpgid to return a predictable process group ID."""
-    with patch("persistproc.core.os.getpgid", return_value=12345) as mock_getpgid:
-        yield mock_getpgid
+        yield {
+            "unix_kill": mock_kill_unix,
+            "getpgid": mock_getpgid,
+        }
 
 
 class MockServer:

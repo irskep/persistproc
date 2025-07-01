@@ -317,17 +317,8 @@ class TestEndToEnd:
         test_dir = temp_dir / "test_workdir"
         test_dir.mkdir()
 
-        # Create a simple script that outputs current directory and env var
-        test_script = test_dir / "pwd_test.py"
-        test_script.write_text(
-            """
-import os
-print(f"CWD: {os.getcwd()}")
-print(f"TEST_VAR: {os.environ.get('TEST_VAR', 'NOT_SET')}")
-"""
-        )
-
-        command = f"python {test_script}"
+        # Use inline Python command that outputs current directory and env var
+        command = 'python -c "import os; print(f\\"CWD: {os.getcwd()}\\"); print(f\\"TEST_VAR: {os.environ.get(\'TEST_VAR\', \'NOT_SET\')}\\"); exit(0)"'
 
         pid = None
         try:

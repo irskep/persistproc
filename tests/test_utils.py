@@ -64,18 +64,9 @@ class TestUtilityFunctions:
             expected = Path("/home/test/.local/share/testapp")
             assert result == expected
 
-    @patch("persistproc.utils.sys.platform", "win32")
-    def test_get_app_data_dir_windows(self):
-        """Test app data directory on Windows."""
-        with patch("persistproc.utils.os.environ.get") as mock_env:
-            mock_env.return_value = "C:\\Users\\test\\AppData\\Roaming"
-            result = get_app_data_dir("testapp")
-            assert "testapp" in str(result)
-            assert "Roaming" in str(result)
-
     @patch("persistproc.utils.sys.platform", "freebsd")
     def test_get_app_data_dir_fallback(self):
-        """Test app data directory fallback for unknown platforms."""
+        """Test app data directory fallback for Unix-like systems."""
         with patch("persistproc.utils.Path.home") as mock_home:
             from pathlib import Path
 
