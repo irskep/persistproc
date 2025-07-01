@@ -1,0 +1,16 @@
+#!/bin/bash
+# Convenience script to run python with the virtualenv activated
+# Usage: ./venv-python script.py [args...]
+#        ./venv-python -m pytest tests/
+#        ./venv-python -c "import persistproc; print('OK')"
+
+set -e
+
+# Get the directory of this script
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+# Activate the virtual environment
+source "$SCRIPT_DIR/.venv/bin/activate"
+
+# Run python with all arguments passed through
+exec python "$@"

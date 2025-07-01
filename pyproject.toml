@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["black"]
+dev = ["black", "pytest>=7.0", "pytest-asyncio>=0.21", "pytest-cov>=4.0"]
 
 [project.scripts]
 persistproc = "persistproc:main"
