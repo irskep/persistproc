@@ -22,6 +22,8 @@ Here's how it works:
 
 This creates a seamless workflow where the agent can autonomously manage the development environment in the background.
 
+There is no config file. Processes are managed entirely at runtime. This is not an replacement for supervisord.
+
 ## Available Tools
 
 `persistproc` exposes a standard [Model Context Protocol (MCP)](https://modelcontext.com/) server on `http://127.0.0.1:8947`. You can use any MCP-compatible client to interact with it programmatically.
