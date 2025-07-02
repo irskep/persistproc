@@ -14,6 +14,7 @@ from fastmcp.client import Client
 
 import pytest
 import pytest_asyncio
+import anyio
 
 
 @pytest.fixture(scope="session")
@@ -57,6 +58,26 @@ def live_server_url(free_port, temp_dir_session, monkeypatch_session):
     # Wait for the process_manager to be initialized
     while persistproc.server.process_manager is None:
         time.sleep(0.1)
+
+    # --- New: Probe the MCP endpoint to ensure the server lifespan is fully started ---
+    # The TCP port may be open before FastMCP's StreamableHTTP session manager finishes
+    # its lifespan startup. Attempt a lightweight MCP request via the async client until
+    # it succeeds to avoid race-conditions that manifest as intermittent 500 responses.
+
+    async def _probe_until_ready(url: str, retries: int = 20):
+        """Attempt to connect to the MCP endpoint until it responds without 5xx."""
+        for _ in range(retries):
+            try:
+                async with Client(f"{url}/mcp/") as probe_client:
+                    # A no-op list_tools call is inexpensive and exercises the full stack.
+                    await probe_client.call_tool("list_processes", {})
+                    return  # Success, server ready
+            except Exception:
+                # Server not ready yet – wait a bit and retry.
+                await anyio.sleep(0.25)
+        # If we exhaust retries, let the original tests surface the failure.
+
+    anyio.run(_probe_until_ready, f"http://127.0.0.1:{free_port}")
 
     # Ensure monitor thread is stopped after tests
     yield f"http://127.0.0.1:{free_port}"
