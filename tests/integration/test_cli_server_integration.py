@@ -42,14 +42,22 @@ class TestCLIServerInteraction:
         )
 
         try:
-            # Wait for the client to start up and tail the initial process
-            await asyncio.sleep(2)  # Give client time to start
+            # Poll until the process is seen by the server
+            target_process = None
+            for _ in range(10):  # Poll for up to 10 seconds
+                list_res = await call_json(live_mcp_client, "list_processes", {})
+                target_process = next(
+                    (
+                        p
+                        for p in list_res
+                        if p["command"] == command_to_tail and p["status"] == "running"
+                    ),
+                    None,
+                )
+                if target_process:
+                    break
+                await asyncio.sleep(1)
 
-            # Find the process PID via MCP
-            list_res = await call_json(live_mcp_client, "list_processes", {})
-            target_process = next(
-                (p for p in list_res if p["command"] == command_to_tail), None
-            )
             assert (
                 target_process is not None
             ), f"Could not find the initial process running. Got: {list_res}"
