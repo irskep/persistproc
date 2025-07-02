@@ -1,91 +1,67 @@
 # persistproc
-> A shared process layer for the modern, multi-agent development workflow.
+
+A shared process layer for multi-agent development workflows
+
+[![PyPI version](https://badge.fury.io/py/persistproc.svg)](https://badge.fury.io/py/persistproc)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
-### The Problem: Competing Agents, Siloed Processes
+> For the most up-to-date and complete documentation, please visit [steveasleep.com/persistproc](https://steveasleep.com/persistproc).
 
-In the current era of rapid AI development, it's common to switch between multiple tools and AI agents. This often leads to a frustrating and common scenario:
+## What is `persistproc`?
 
-You start your app's frontend `webpack` dev server in iTerm. It's running perfectly.
+When developing locally, you often need long-running processes like web servers, bundlers, or test watchers. Depending on where you start these processes, agents may or may not have access to them. If you start your web server from Cursor, then Claude Code can't see its output. If you prefer to run things in iTerm instead of the Cursor terminal, then Cursor's agents can't see or control the server process.
 
-```mermaid
-graph TD
-    subgraph "Your Environment"
-        A[iTerm] -- "runs" --> P1[Webpack Dev Server];
-        B[Cursor];
-        C[Claude Code];
-    end
-    style P1 fill:#d4edda,stroke:#c3e6cb
+`persistproc` is an MCP server and command line tool which lets processes be started, inspected, and controlled from any terminal or agent. If you start your web server in iTerm, then Claude Code and Cursor can see its output and stop or restart it. An agent can also start a long-running process that you can then easily start watching the output of in your terminal.
+
+Here's how it works:
+
+1.  Run `persistproc --serve` once.
+2.  Use an agent, or the `persistproc` command, to start your development tasks (e.g., `persistproc npm run dev`, or "Hey claude, run `npm run dev` using persistproc").
+3.  Your AI agent, connected to the server, can now manage that process for you—restarting it after it makes a code change, or reading its logs to debug an issue—without needing to interrupt you or ask for terminal access. It doesn't matter if you or the agent started the process.
+
+This creates a seamless workflow where the agent can autonomously manage the development environment in the background.
+
+## Available Tools
+
+`persistproc` exposes a standard [Model Context Protocol (MCP)](https://modelcontext.com/) server on `http://127.0.0.1:8947`. You can use any MCP-compatible client to interact with it programmatically.
+
+The server exposes the following tools:
+
+*   `start_process(command: str, working_directory: str = None, environment: dict = None)`: Start a new long-running process.
+*   `list_processes()`: List all managed processes and their status.
+*   `get_process_status(pid: int)`: Get the detailed status of a specific process.
+*   `stop_process(pid: int, force: bool = False)`: Stop a running process by its PID.
+*   `restart_process(pid: int)`: Stops a process and starts it again with the same parameters.
+*   `get_process_output(pid: int, stream: str, lines: int = None, before_time: str = None, since_time: str = None)`: Retrieve captured output from a process.
+*   `get_process_log_paths(pid: int)`: Get the paths to the log files for a specific process.
+
+## Getting started
+
+### 1. Install `persistproc`
+
+```bash
+pip install persistproc
 ```
 
-Then, you move to **Cursor** to make a change to your `webpack.config.js`. The LLM assistant, trying to be helpful, attempts to start the server on its own—but it fails, because you're already running it. The port is already in use.
+### 2. Start the Server
 
-```mermaid
-graph TD
-    subgraph "Your Environment"
-        A[iTerm] -- "runs" --> P1[Webpack Dev Server: Port 3000];
-        B[Cursor] -- "tries to run (FAILS!)" --> P2[Webpack Dev Server: Port 3000];
-        C[Claude Code];
-    end
-    style P1 fill:#d4edda,stroke:#c3e6cb
-    style P2 fill:#f8d7da,stroke:#f5c6cb
-```
-
-Next, you switch to **Claude Code** to do some other work that eventually requires a server restart. But Claude has no way of restarting the process running in iTerm, so it asks you to do it manually, wasting your time and breaking your flow.
-
-Your development processes are trapped in the environment they were started in. Each agent is blind to the others, leading to conflicts and manual intervention.
-
-### The Solution: A Shared Process Hub
-
-`persistproc` solves this by decoupling your processes from your terminal sessions. It runs a single, lightweight server in the background that acts as a central hub for all your development processes.
-
-```mermaid
-graph TD
-    subgraph "Your Agents"
-        A[iTerm];
-        B[Cursor];
-        C[Claude Code];
-    end
-
-    subgraph "The persistproc Hub"
-        Hub(persistproc server);
-        P1[Webpack Dev Server];
-        Hub -- manages --> P1;
-    end
-    
-    A <--> Hub;
-    B <--> Hub;
-    C <--> Hub;
-
-    subgraph "Result"
-        R1["Any agent can start, stop, restart, or read logs from any process."]
-    end
-
-```
-
-With `persistproc`, your dev server is no longer a siloed process but a shared resource for your entire development environment.
-
-- **Start a process** from iTerm (or have an agent do it).
-- **Restart it** from Cursor.
-- **Check its logs** from Claude Code.
-- No more port conflicts. No more manual restarts. No more copy/pasting output.
-
-## Primary Workflow: Agent-Driven Control
-
-### 1. Start the `persistproc` Server
-This is the core daemon that will manage everything. You only need to do this once. Run it in a dedicated terminal window and keep it running. This makes it easy to see server-level activity at a glance.
+Run this in a dedicated terminal and leave it running.
 
 ```bash
 persistproc --serve
 ```
-The server will now be running, ready to accept commands from any agent.
 
-### 2. Configure Your AI Agents
-For your AI agents (in Cursor, Claude Code, etc.) to use `persistproc`, they need to know where its MCP server is.
+The server will log its own status to stdout and manage processes.
 
-#### Cursor / VS Code
-In your editor's `settings.json` file, add the following to the `mcp.servers` configuration:
+### 3. Configure Your AI Agent
+
+To allow an AI agent to control these processes, configure its MCP client to point to the `persistproc` server.
+
+#### Cursor (in `.cursor/mcp.json`)
+
 ```json
 {
   "mcp.servers": {
@@ -97,79 +73,43 @@ In your editor's `settings.json` file, add the following to the `mcp.servers` co
 ```
 
 #### Claude Code
-To add `persistproc` as an MCP server for Claude Code, you first need to have the `persistproc` server running separately:
-```bash
-persistproc --serve
-```
-Then, in another terminal, run the following command to tell Claude where to find the running server:
 
-```bash
+```sh
 claude mcp add --transport http persistproc http://127.0.0.1:8947/mcp/
 ```
-Now, agents in Cursor and Claude Code can see and interact with `persistproc`.
 
-### 3. Let Your Agents Start Processes
-This is the primary way to start processes. Instead of running commands yourself, you ask your agent to do it.
+### 2. Start a Process
 
-For example, you can ask your assistant in Cursor:
-> "start the webpack dev server"
-
-The agent, now aware of `persistproc`, won't just run a blind shell command. It will see the `start_process` tool and use it correctly: `start_process(command="npm run dev")`.
-
-`persistproc` will start the server, manage it, and report its status and `pid` back to the agent. The process is now available to *all* your agents.
-
-### 4. Manage Processes from Anywhere
-Now, the real power emerges. You can switch to a different agent or tool and manage the process you just started.
-
-For example, you can later ask an agent in Claude Code:
-> "restart the webpack server"
-
-The agent will see the running processes via `list_processes()` and can call `restart_process(pid=...)` to perform the action. No more port conflicts. No more manual restarts.
-
-## Direct Terminal Usage (Optional)
-While the main power comes from agent integration, you can also use the `persistproc` command as a simple client from your own terminal.
-
-### Starting and Tailing
-This is useful for starting a process and immediately tailing its logs in one go:
+In another terminal, `cd` to your project's directory and run your command via `persistproc`.
 
 ```bash
-# In iTerm, for example:
+# Example: starting a Node.js development server
+cd /path/to/your/project
 persistproc npm run dev
 ```
-- If `npm run dev` is not running, `persistproc` will start it.
-- If `npm run dev` is *already* running, `persistproc` will simply start tailing the logs of the existing process and notify you.
 
-To force a restart of an already-running process, use the `--restart` flag:
-```bash
-persistproc --restart npm run dev
-```
+The command is sent to the server, and its output is streamed to your terminal. You can safely close this terminal, and the process will continue to run.
 
-### Stopping a Tailed Process
-When you are tailing a process, pressing `Ctrl+C` will stop the log stream and present you with a prompt:
+Alternatively, just ask your agent to "run your dev server using persistproc," and it will probably find the right command by looking at your `package.json` file and run it using `persistproc`.
 
-```
---- Log tailing interrupted. ---
-Do you want to stop the running process 'npm run dev' (PID 12345)? [y/N]
-```
+With this, your agent can now use the available tools to manage your development environment.
 
-- Pressing `y` will send a termination signal to the process, shutting it down.
-- Pressing `n` (or any other key) will only detach the log tail, leaving the process **running** in the background, where it can still be managed by other agents.
+## Example Agent Interaction
 
-## Advanced Management
+Once your agent is connected, you can ask it to manage your processes. Assuming you have started a web server with `persistproc npm run dev` (PID 12345), you can now interact with it.
 
-`persistproc` exposes a standard [Model Context Protocol (MCP)](https://modelcontext.com/) server on `http://127.0.0.1:8947`. You can use any MCP-compatible client to interact with it programmatically for more advanced tasks.
+*   **You**: "List the running processes."
+    *   **Agent**: Calls `list_processes()` and shows you the running `npm run dev` process.
 
-The server exposes the following tools:
-- `list_processes()`
-- `get_process_status(pid: int)`
-- `stop_process(pid: int, force: bool = False)`
-- `restart_process(pid: int)`
-- `get_process_output(...)`
-- `get_process_log_paths(pid: int)`
+*   **You**: "The web server seems stuck. Can you restart it?"
+    *   **Agent**: Identifies the correct process and calls `restart_process(pid=12345)`.
+
+*   **You**: "Show me any errors from the web server."
+    *   **Agent**: Calls `get_process_output(pid=12345, stream="stderr")` to retrieve the latest error logs.
 
 ## Development
 
-Use `./run-dev.sh` to install dependencies in a virtualenv and run `persistproc`.
+Use `./run-in-venv.sh` to install dependencies in a virtualenv and run `persistproc`.
 
 ## License
 

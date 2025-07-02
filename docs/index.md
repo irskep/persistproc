@@ -22,14 +22,19 @@ Here's how it works:
 
 This creates a seamless workflow where the agent can autonomously manage the development environment in the background.
 
-## Functions
+## Available Tools
 
-*   `start_process`
-*   `stop_process`
-*   `restart_process`
-*   `list_processes`
-*   `get_process_status`
-*   `get_process_output`
+`persistproc` exposes a standard [Model Context Protocol (MCP)](https://modelcontext.com/) server on `http://127.0.0.1:8947`. You can use any MCP-compatible client to interact with it programmatically.
+
+The server exposes the following tools:
+
+*   `start_process(command: str, working_directory: str = None, environment: dict = None)`: Start a new long-running process.
+*   `list_processes()`: List all managed processes and their status.
+*   `get_process_status(pid: int)`: Get the detailed status of a specific process.
+*   `stop_process(pid: int, force: bool = False)`: Stop a running process by its PID.
+*   `restart_process(pid: int)`: Stops a process and starts it again with the same parameters.
+*   `get_process_output(pid: int, stream: str, lines: int = None, before_time: str = None, since_time: str = None)`: Retrieve captured output from a process.
+*   `get_process_log_paths(pid: int)`: Get the paths to the log files for a specific process.
 
 ## Getting started
 
@@ -99,3 +104,11 @@ Once your agent is connected, you can ask it to manage your processes. Assuming 
 
 *   **You**: "Show me any errors from the web server."
     *   **Agent**: Calls `get_process_output(pid=12345, stream="stderr")` to retrieve the latest error logs.
+
+## Development
+
+Use `./run-in-venv.sh` to install dependencies in a virtualenv and run `persistproc`.
+
+## License
+
+This project is licensed under the MIT License.
