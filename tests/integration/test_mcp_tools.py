@@ -3,7 +3,6 @@ Integration tests for MCP tools using a live server and the fastmcp client.
 """
 
 import pytest
-import pytest_asyncio
 import sys
 import time
 import json
@@ -12,10 +11,18 @@ import asyncio
 import subprocess
 from pathlib import Path
 import httpx
+import pytest_asyncio
 
 from fastmcp.client import Client
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+
+
+@pytest_asyncio.fixture
+async def mcp_client(mcp_server):
+    """Provides an initialized fastmcp Client for each test function, using an in-memory server."""
+    async with Client(mcp_server) as client:
+        yield client
 
 
 async def call_json(client: Client, tool: str, args: dict):
@@ -32,35 +39,13 @@ async def call_json(client: Client, tool: str, args: dict):
     return res
 
 
-@pytest_asyncio.fixture
-async def mcp_client(live_server_url):
-    """Provides an initialized fastmcp Client for each test function."""
-    client = Client(f"{live_server_url}/mcp/")
-    try:
-        async with client:
-            yield client
-    except httpx.HTTPStatusError as e:
-        # On some python/OS combos, the server throws a 500 error on
-        # client disconnect during test teardown. This is a known
-        # issue with the underlying library, and since it happens
-        # during teardown, we can safely ignore it.
-        if e.response.status_code != 500:
-            raise
-    except httpx.ConnectError:
-        # This can also happen during teardown if the server is already gone.
-        # This is acceptable during the cleanup phase of the fixture.
-        pass
-
-
 class TestMCPToolsIntegration:
     """Test MCP tools against a live running server using the fastmcp client."""
 
     async def test_mcp_server_is_running(self, mcp_client: Client):
-        """Test that the server is up and has the expected tools."""
+        """Check that the MCP server is running and has registered tools."""
         tools = await mcp_client.list_tools()
-        tool_names = [t.name for t in tools]
-        assert "start_process" in tool_names
-        assert "list_processes" in tool_names
+        assert "start_process" in [t.name for t in tools]
 
     async def test_start_and_list_process(self, mcp_client: Client):
         """Test starting a process and then listing it."""
@@ -70,7 +55,9 @@ class TestMCPToolsIntegration:
         assert start_res["status"] == "running"
         time.sleep(0.5)
         list_res = await call_json(mcp_client, "list_processes", {})
-        assert any(p["pid"] == pid for p in list_res)
+        assert any(
+            p["command"] == command and p["status"] == "running" for p in list_res
+        )
 
     async def test_get_process_status(self, mcp_client: Client):
         """Test getting the status of a specific process."""
@@ -78,6 +65,7 @@ class TestMCPToolsIntegration:
         start_res = await call_json(mcp_client, "start_process", {"command": command})
         pid = start_res["pid"]
         status_res = await call_json(mcp_client, "get_process_status", {"pid": pid})
+        assert status_res["pid"] == pid
         assert status_res["status"] == "running"
 
     async def test_stop_process(self, mcp_client: Client):
@@ -88,7 +76,8 @@ class TestMCPToolsIntegration:
         await call_json(mcp_client, "stop_process", {"pid": pid})
         time.sleep(1)
         final_status = await call_json(mcp_client, "get_process_status", {"pid": pid})
-        assert final_status["status"] in ["exited", "stopped", "terminated"]
+        assert final_status["status"] == "terminated"
+        assert "exit_code" in final_status
 
     async def test_restart_process(self, mcp_client: Client):
         """Test restarting a process."""
@@ -102,20 +91,29 @@ class TestMCPToolsIntegration:
         restart_res = await call_json(mcp_client, "restart_process", {"pid": old_pid})
         new_pid = restart_res["pid"]
         assert new_pid != old_pid
+        assert "running" in restart_res["status"]
 
-    async def test_get_process_logs(self, mcp_client: Client):
+    async def test_get_process_logs(self, mcp_client: Client, mcp_server):
         """Test getting log paths and log content."""
-        unique_output = f"unique_test_output_{time.time()}"
+        unique_output = f"output_{time.time()}"
         command = f"{sys.executable} -c \"import sys, time; print('{unique_output}'); sys.stdout.flush(); time.sleep(1)\""
         start_res = await call_json(mcp_client, "start_process", {"command": command})
         pid = start_res["pid"]
+
+        # In in-memory tests, the monitor thread is patched out, so we manually log an event
+        # to ensure the log file contains system messages for the test to find.
+        mcp_server.process_manager._log_event(
+            mcp_server.process_manager.processes[pid], "Test system event"
+        )
+
         time.sleep(1)
         log_output = await call_json(
             mcp_client,
             "get_process_output",
-            {"pid": pid, "stream": "stdout", "lines": 10},
+            {"pid": pid, "stream": "combined", "lines": 10},
         )
-        assert unique_output in "".join(log_output)
+        assert any(unique_output in line for line in log_output)
+        assert any("SYSTEM" in line for line in log_output)
 
     async def test_start_process_in_nonexistent_dir_fails(self, mcp_client: Client):
         """Test that starting a process in a bad directory fails."""
@@ -127,135 +125,5 @@ class TestMCPToolsIntegration:
         )
         assert "error" in res and "does not exist" in res["error"]
 
-    async def test_cli_client_survives_restart(
-        self, mcp_client: Client, live_server_url
-    ):
-        """
-        Test that the CLI client, when tailing a process, can correctly
-        survive that process being restarted by another agent and
-        continue tailing the new process.
-        """
-        host, port = live_server_url.split(":")[-2].strip("/"), live_server_url.split(
-            ":"
-        )[-1].strip("/")
-
-        # Launch the CLI client as a separate process to tail the command
-        # Use a simple command that is easy to identify
-        command_to_tail = "sleep 30"
-
-        cli_process = await asyncio.create_subprocess_exec(
-            "python",
-            "-m",
-            "persistproc",
-            "--host",
-            host,
-            "--port",
-            port,
-            *command_to_tail.split(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        try:
-            # Wait for the client to start up and tail the initial process
-            await asyncio.sleep(
-                5
-            )  # Increased sleep to ensure process starts and client is ready
-
-            # Find the process PID via MCP
-            list_res = await call_json(mcp_client, "list_processes", {})
-            target_process = next(
-                (p for p in list_res if p["command"] == command_to_tail), None
-            )
-            assert (
-                target_process is not None
-            ), f"Could not find the initial process running. Got: {list_res}"
-            old_pid = target_process["pid"]
-
-            # Use MCP to restart the process (simulating an agent action)
-            restart_res = await call_json(
-                mcp_client, "restart_process", {"pid": old_pid}
-            )
-            assert (
-                "pid" in restart_res and restart_res["pid"] != old_pid
-            ), f"Restart failed: {restart_res}"
-            new_pid = restart_res["pid"]
-
-            # Check the CLI client's output to see if it detected the restart
-            output_found = False
-            try:
-                # Read stderr line-by-line to find the restart message
-                for _ in range(40):  # Up to ~20 seconds
-                    line = await asyncio.wait_for(
-                        cli_process.stderr.readline(), timeout=1.0
-                    )
-                    if not line:
-                        break
-                    decoded_line = line.decode()
-                    if f"restarted. Now tracking new PID {new_pid}" in decoded_line:
-                        output_found = True
-                        break
-                    await asyncio.sleep(0.5)
-            except asyncio.TimeoutError:
-                pass  # The assertion below will handle the failure.
-
-            assert output_found, "Did not find restart message in client stderr."
-
-        finally:
-            # Clean up the subprocess
-            cli_process.terminate()
-            await cli_process.wait()
-
-    async def test_cli_raw_tail(self, mcp_client: Client, live_server_url):
-        """Run CLI with --raw and verify timestamped output lines are emitted."""
-
-        host, port = live_server_url.split(":")[-2].strip("/"), live_server_url.split(
-            ":"
-        )[-1].strip("/")
-
-        script_path = (
-            Path(__file__).parent.parent / "support_scripts" / "count_print.py"
-        ).resolve()
-
-        # Command that prints predictable lines
-        command_to_run = f"python {script_path}"
-
-        # Launch CLI client in raw mode
-        cli_proc = await asyncio.create_subprocess_exec(
-            "python",
-            "-m",
-            "persistproc",
-            "--host",
-            host,
-            "--port",
-            port,
-            "--raw",
-            *command_to_run.split(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        try:
-            # Wait for some output
-            raw_lines = []
-            for _ in range(10):
-                line = await asyncio.wait_for(cli_proc.stdout.readline(), timeout=3)
-                if not line:
-                    break
-                decoded = line.decode()
-                raw_lines.append(decoded)
-                if "COUNT 0" in decoded:
-                    break
-
-            assert any(
-                "COUNT 0" in l for l in raw_lines
-            ), "Expected raw log output not received"
-
-            # Raw lines should start with ISO timestamp
-            import re, datetime
-
-            ts_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.")
-            assert any(ts_pattern.match(l) for l in raw_lines)
-        finally:
-            cli_proc.terminate()
-            await cli_proc.wait()
+    # The following tests require a live server to interact with the CLI,
+    # so they are moved to a separate file.

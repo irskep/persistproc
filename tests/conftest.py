@@ -10,8 +10,10 @@ import uvicorn
 from persistproc.server import create_app, run_server
 from persistproc.utils import get_app_data_dir
 import persistproc.server
+from fastmcp.client import Client
 
 import pytest
+import pytest_asyncio
 
 
 @pytest.fixture(scope="session")
@@ -84,6 +86,33 @@ def temp_dir(temp_dir_session):
     temp_path = Path(tempfile.mkdtemp(dir=temp_dir_session))
     yield temp_path
     shutil.rmtree(temp_path, ignore_errors=True)
+
+
+@pytest.fixture
+def process_manager(temp_dir):
+    """Provides a ProcessManager instance for testing."""
+    from persistproc.core import ProcessManager
+
+    with patch("persistproc.core.ProcessManager._monitor_processes"):
+        pm = ProcessManager(log_directory=temp_dir)
+        yield pm
+        pm.stop_monitor_thread()
+
+
+@pytest.fixture
+def mcp_server(process_manager):
+    """Provides an in-memory MCP server instance for testing."""
+    with patch("persistproc.server.setup_signal_handlers", lambda: None):
+        app = create_app(process_manager)
+        return app
+
+
+@pytest_asyncio.fixture
+async def live_mcp_client(live_server_url):
+    """Provides a client connected to the live test server."""
+    client = Client(f"{live_server_url}/mcp/")
+    async with client:
+        yield client
 
 
 @pytest.fixture
