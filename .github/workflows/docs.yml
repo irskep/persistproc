@@ -13,7 +13,9 @@ on:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
+      - 'mkdocs-local.yml'
       - 'requirements-docs.txt'
+      - '.github/workflows/docs.yml'
 
 permissions:
   contents: read
