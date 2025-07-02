@@ -59,114 +59,6 @@ jobs:
           path: './site'
           retention-days: 30
 
-  surge-preview:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Download built docs
-        uses: actions/download-artifact@v4
-        with:
-          name: docs-preview-pr-${{ github.event.number }}
-          path: ./site
-          
-      - name: Install Surge
-        run: npm install -g surge
-        
-      - name: Deploy to Surge
-        env:
-          SURGE_LOGIN: ${{ secrets.SURGE_LOGIN }}
-          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
-        run: |
-          # Create a unique subdomain for this PR
-          SURGE_DOMAIN="persistproc-pr-${{ github.event.number }}.surge.sh"
-          
-          # Deploy to Surge (with fallback if secrets not configured)
-          if [ -n "$SURGE_LOGIN" ] && [ -n "$SURGE_TOKEN" ]; then
-            surge ./site $SURGE_DOMAIN
-            echo "PREVIEW_URL=https://$SURGE_DOMAIN" >> $GITHUB_ENV
-            echo "DEPLOYMENT_STATUS=success" >> $GITHUB_ENV
-          else
-            echo "DEPLOYMENT_STATUS=skipped" >> $GITHUB_ENV
-            echo "Surge.sh credentials not configured. Skipping live preview deployment."
-          fi
-          
-      - name: Comment on PR
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const prNumber = context.payload.pull_request.number;
-            const deploymentStatus = process.env.DEPLOYMENT_STATUS;
-            const previewUrl = process.env.PREVIEW_URL;
-            const runId = context.runId;
-            
-            let comment;
-            
-            if (deploymentStatus === 'success') {
-              comment = `## 📚 Documentation Preview
-              
-              **🌐 Live Preview:** [${previewUrl}](${previewUrl})
-              
-              The documentation for this PR has been deployed and is viewable in your browser! 
-              
-              - **Preview URL**: [${previewUrl}](${previewUrl})
-              - **Updated**: ${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC
-              - **Status**: ✅ Ready to view
-              
-              The preview will be automatically updated when you push new commits to this PR.
-              
-              ---
-              
-              *Powered by [Surge.sh](https://surge.sh) - This preview will be available until the PR is closed.*`;
-            } else {
-              comment = `## 📚 Documentation Preview
-              
-              The documentation has been built for this PR! 
-              
-              **📥 Download Preview:**
-              1. Go to the [Actions tab](https://github.com/${{ github.repository }}/actions/runs/${runId})
-              2. Download the \`docs-preview-pr-${prNumber}\` artifact
-              3. Extract and open \`index.html\` in your browser
-              
-              **🔗 Direct link:** https://github.com/${{ github.repository }}/actions/runs/${runId}
-              
-              ---
-              
-              *To enable live previews, configure \`SURGE_LOGIN\` and \`SURGE_TOKEN\` secrets in repository settings.*`;
-            }
-            
-            // Check if we already commented
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-            });
-            
-            const existingComment = comments.find(comment => 
-              comment.user.login === 'github-actions[bot]' && 
-              comment.body.includes('Documentation Preview')
-            );
-            
-            if (existingComment) {
-              // Update existing comment
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body: comment
-              });
-            } else {
-              // Create new comment
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                body: comment
-              });
-            }
-
   deploy:
     if: github.ref == 'refs/heads/main'
     environment:
@@ -181,3 +73,47 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  comment:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Comment with download link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const runId = context.runId;
+            const repo = context.repo.owner + '/' + context.repo.repo;
+            const commentBody = `📚 **Documentation Preview**
+
+Download the built documentation artifact for this PR:
+
+👉 https://github.com/${repo}/actions/runs/${runId}
+
+Extract the ZIP and open index.html in your browser.`;
+            
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const existing = comments.find(c => c.user.login === 'github-actions[bot]' && c.body.includes('Documentation Preview'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: commentBody
+              });
+            }
