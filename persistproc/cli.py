@@ -31,29 +31,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="PersistProc: Manage and monitor long-running processes.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Start the MCP server in the background
-  persistproc --serve &
-
-  # Run a command and tail its output (raw script output is the default).
-  persistproc sleep 30
-
-  # To view the full, timestamped log file output:
-  persistproc --raw sleep 30
-
-  # Run a command with arguments
-  persistproc python -m http.server
-""",
     )
-    parser.add_argument(
-        "--serve", action="store_true", help="Run the PersistProc MCP server."
-    )
-    parser.add_argument(
-        "--restart",
-        action="store_true",
-        help="Restart the process if it's already running.",
-    )
+    # Global arguments
     parser.add_argument(
         "--host", default="127.0.0.1", help="Host to connect to or bind to."
     )
@@ -63,23 +42,151 @@ Examples:
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose logging."
     )
-    parser.add_argument(
+
+    subparsers = parser.add_subparsers(dest="subcommand", help="Available commands")
+
+    # --- Server Command ---
+    parser_serve = subparsers.add_parser(
+        "serve", help="Run the PersistProc MCP server."
+    )
+
+    # --- Run Command ---
+    parser_run = subparsers.add_parser("run", help="Run a command and tail its output.")
+    parser_run.add_argument(
+        "--restart",
+        action="store_true",
+        help="Restart the process if it's already running.",
+    )
+    parser_run.add_argument(
         "--raw",
         action="store_true",
         help="Display the raw, timestamped log file content instead of the clean process output.",
     )
-    parser.add_argument(
+    parser_run.add_argument(
         "--on-exit",
-        choices=["stop", "detach"],
-        default=None,
-        help="What to do when Ctrl+C is pressed. 'stop' will stop the process, 'detach' will leave it running. If not provided, you will be prompted.",
+        choices=["stop", "detach", "ask"],
+        default="ask",
+        help="What to do when Ctrl+C is pressed. 'stop' will stop the process, 'detach' will leave it running. 'ask' will prompt you. Default is 'ask'.",
     )
-    parser.add_argument(
+    parser_run.add_argument(
         "command",
         nargs=argparse.REMAINDER,
         help="The command to run and monitor.",
     )
+
+    # --- Tool Commands ---
+    parser_list = subparsers.add_parser(
+        "list", help="List all managed processes and their status."
+    )
+    parser_status = subparsers.add_parser(
+        "status", help="Get the detailed status of a specific process."
+    )
+    parser_status.add_argument("pid", type=int, help="The PID of the process.")
+
+    parser_stop = subparsers.add_parser(
+        "stop", help="Stop a running process by its PID."
+    )
+    parser_stop.add_argument("pid", type=int, help="The PID of the process.")
+    parser_stop.add_argument(
+        "--force", action="store_true", help="Force stop the process (SIGKILL)."
+    )
+
+    parser_restart = subparsers.add_parser(
+        "restart", help="Restart a running process by its PID."
+    )
+    parser_restart.add_argument("pid", type=int, help="The PID of the process.")
+
+    parser_output = subparsers.add_parser(
+        "output", help="Retrieve captured output from a process."
+    )
+    parser_output.add_argument("pid", type=int, help="The PID of the process.")
+    parser_output.add_argument(
+        "stream",
+        choices=["stdout", "stderr", "combined"],
+        help="The output stream to retrieve.",
+    )
+    parser_output.add_argument(
+        "--lines", type=int, help="The number of lines to retrieve from the end."
+    )
+
+    parser_log_paths = subparsers.add_parser(
+        "log-paths", help="Get the paths to the log files for a process."
+    )
+    parser_log_paths.add_argument(
+        "pid_or_command",
+        help="The PID or the exact command string of the process.",
+    )
+
     return parser, parser.parse_args()
+
+
+async def tool_command_wrapper(args, tool_name, params=None):
+    """A generic wrapper to connect, call a tool, and print the result."""
+    mcp_url = f"http://{args.host}:{args.port}/mcp/"
+    try:
+        async with Client(mcp_url) as client:
+            result = await client.call_tool(tool_name, params or {})
+            # Pretty print JSON for most tools
+            try:
+                data = json.loads(result[0].text)
+                print(json.dumps(data, indent=2))
+            except json.JSONDecodeError:
+                print(result[0].text)
+    except Exception as e:
+        logger.error(f"Failed to connect to persistproc server at {mcp_url}.")
+        logger.debug(f"Connection error: {e}")
+        sys.exit(1)
+
+
+async def log_paths_command(args: argparse.Namespace):
+    """Handles the 'log-paths' command."""
+    mcp_url = f"http://{args.host}:{args.port}/mcp/"
+    pid_or_command = args.pid_or_command
+    pid_to_use = None
+
+    try:
+        pid_to_use = int(pid_or_command)
+    except ValueError:
+        # Not a PID, so it must be a command string
+        pass
+
+    try:
+        async with Client(mcp_url) as client:
+            if pid_to_use is None:
+                # It's a command string, we need to find the PID
+                list_result = await client.call_tool("list_processes", {})
+                processes = json.loads(list_result[0].text)
+                found_proc = next(
+                    (
+                        p
+                        for p in processes
+                        if p["command"] == pid_or_command and p["status"] == "running"
+                    ),
+                    None,
+                )
+                if not found_proc:
+                    logger.error(
+                        f"No running process found with command: '{pid_or_command}'"
+                    )
+                    sys.exit(1)
+                pid_to_use = found_proc["pid"]
+
+            # Now get the log paths
+            paths_result = await client.call_tool(
+                "get_process_log_paths", {"pid": pid_to_use}
+            )
+            paths = json.loads(paths_result[0].text)
+            if "error" in paths:
+                logger.error(f"Error getting log paths: {paths['error']}")
+                sys.exit(1)
+
+            for stream, path in paths.items():
+                print(path)
+
+    except Exception as e:
+        logger.error(f"Failed to connect to persistproc server at {mcp_url}.")
+        logger.debug(f"Connection error: {e}")
+        sys.exit(1)
 
 
 async def run_and_tail_async(args: argparse.Namespace):
@@ -193,6 +300,9 @@ async def run_and_tail_async(args: argparse.Namespace):
         sys.exit(1)
 
 
+POLL_INTERVAL = 1.0  # seconds
+
+
 async def tail_and_monitor_process_async(
     client: Client,
     initial_pid: int,
@@ -249,22 +359,12 @@ async def tail_and_monitor_process_async(
             )
             return
 
-        print(
-            f"--- Tailing output for PID {current_pid} ('{command_str}') ---",
-            file=sys.stderr,
-        )
-        if current_pid != initial_pid:
-            print(
-                f"--- Process was restarted. Original PID was {initial_pid}. ---",
-                file=sys.stderr,
-            )
-
         stop_tail_event = threading.Event()
 
         def tail_worker(raw_log: bool):
             """The actual tailing logic that runs in a thread."""
             try:
-                log_file.seek(0, 2)
+                log_file.seek(0, 2)  # Go to the end of the file
                 while not stop_tail_event.is_set():
                     line = log_file.readline()
                     if not line:
@@ -272,7 +372,6 @@ async def tail_and_monitor_process_async(
                             break
                         time.sleep(0.1)
                         continue
-
                     if raw_log:
                         output_line = line
                     else:
@@ -286,98 +385,84 @@ async def tail_and_monitor_process_async(
                     log_file.close()
                 logger.debug("Tail worker finished.")
 
-        tail_thread = threading.Thread(
+        tail_worker_thread = threading.Thread(
             target=tail_worker, args=(args.raw,), daemon=True
         )
-        tail_thread.start()
+        tail_worker_thread.start()
 
-        process_truly_exited = False
-        restarted_proc = None
-
-        # Main monitoring loop
-        try:
-            while tail_thread.is_alive() and not shutdown_event.is_set():
-                try:
-                    status_result = await client.call_tool(
-                        "get_process_status", {"pid": current_pid}
-                    )
-                    p_status = json.loads(status_result[0].text)
-                    if "error" in p_status or p_status.get("status") not in (
-                        "running",
-                        "starting",
-                    ):
-                        process_truly_exited = True
-                        break  # Exit monitoring loop, process is gone.
-                except Exception:
-                    logger.warning("Could not get process status. Assuming it exited.")
-                    process_truly_exited = True
-                    break
-                await asyncio.sleep(1.0)  # Polling interval
-
+        # Monitor for process changes or shutdown signals
+        while tail_worker_thread.is_alive():
             if shutdown_event.is_set():
-                # User-initiated shutdown
+                stop_tail_event.set()
                 break
+            await asyncio.sleep(0.1)
 
-            if process_truly_exited:
-                list_res = await client.call_tool("list_processes", {})
-                all_procs = json.loads(list_res[0].text)
-                restarted_proc = find_restarted_process(
-                    all_procs, command_str, last_known_start_time
-                )
+        tail_worker_thread.join(timeout=0.1)
 
-                if restarted_proc:
-                    current_pid = restarted_proc["pid"]
-                    last_known_start_time = restarted_proc["start_time"]
-                    logs_result = await client.call_tool(
-                        "get_process_log_paths", {"pid": current_pid}
-                    )
-                    log_paths = json.loads(logs_result[0].text)
-                    current_log_path = Path(log_paths["combined"])
-                    # Continue the outer `while` to start tailing the new process
-                else:
-                    logger.info("Process has exited and was not restarted.")
-                    break  # Exit the outer `while` loop
-        finally:
-            # Cleanly stop the tailing thread
-            stop_tail_event.set()
-            tail_thread.join(timeout=2.0)
+        if shutdown_event.is_set():
+            break
 
-    # After the main loop, decide what to do on user-initiated exit
-    if shutdown_event.is_set():
-        logger.debug("Shutdown event received, deciding action.")
-        should_stop = False
-        if args.on_exit == "stop":
-            should_stop = True
-        elif args.on_exit == "detach":
-            should_stop = False
-        elif sys.stdin.isatty():
-            try:
-                stop_choice = input(
-                    f"Stop running process '{command_str}' (PID {current_pid})? [y/N] "
-                )
-                if stop_choice.lower() == "y":
-                    should_stop = True
-            except (EOFError, KeyboardInterrupt):
-                print()  # Print a newline to make output cleaner
-                should_stop = False
+        # If we get here, the log tailing ended because the process likely exited.
+        # We now check for a restart.
+        logger.info(
+            f"--- Log stream for PID {current_pid} ended. Checking for restart... ---"
+        )
+        await asyncio.sleep(POLL_INTERVAL)  # Give server time to notice restart
 
-        if should_stop:
-            print(f"--- Stopping process {current_pid}... ---", file=sys.stderr)
-            try:
-                await client.call_tool("stop_process", {"pid": current_pid})
-            except Exception as e:
-                logger.error(f"Failed to stop process {current_pid}: {e}")
-        else:
-            print(
-                "\n--- Detaching from log tailing. Process remains running. ---",
-                file=sys.stderr,
+        try:
+            all_processes = json.loads(
+                (await client.call_tool("list_processes"))[0].text
             )
+        except Exception:
+            logger.error("Could not reach server to check for restart. Detaching.")
+            break
 
-    # Cleanup signal handler
-    try:
-        loop.remove_signal_handler(signal.SIGINT)
-    except NotImplementedError:
-        pass
+        restarted_proc = find_restarted_process(
+            all_processes, command_str, last_known_start_time
+        )
+        if restarted_proc:
+            new_pid = restarted_proc["pid"]
+            new_start_time = restarted_proc["start_time"]
+            logger.info(
+                f"--- Process was restarted. Original PID was {current_pid}, new PID is {new_pid}. Tailing new logs. ---"
+            )
+            current_pid = new_pid
+            last_known_start_time = new_start_time
+            # Update log path for the new process
+            log_paths_result = await client.call_tool(
+                "get_process_log_paths", {"pid": new_pid}
+            )
+            log_paths = json.loads(log_paths_result[0].text)
+            current_log_path = Path(log_paths["combined"])
+        else:
+            logger.info("--- Process has not restarted. Detaching from logs. ---")
+            break
+
+    # After the main loop (due to Ctrl+C or process exit)
+    if shutdown_event.is_set():
+        # Handle the exit action based on user input or args
+        final_action = args.on_exit
+        if final_action == "ask":
+            try:
+                choice = input(
+                    "Stop the running process or detach from it? (s/d) "
+                ).lower()
+                if choice == "s":
+                    final_action = "stop"
+                else:
+                    final_action = "detach"
+            except (EOFError, KeyboardInterrupt):
+                final_action = "detach"
+                print("\nDetaching by default.")
+
+        if final_action == "stop":
+            logger.info(f"Stopping process {current_pid} as requested.")
+            await client.call_tool("stop_process", {"pid": current_pid})
+            logger.info("Process stopped.")
+        else:
+            logger.info("Detaching from process. It will continue running.")
+
+    logger.debug("Tailing and monitoring finished.")
 
 
 def find_restarted_process(

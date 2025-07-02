@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+import time
+import sys
+
+i = 0
+while True:
+    print(i)
+    sys.stdout.flush()
+    i += 1
+    time.sleep(1)

@@ -18,12 +18,33 @@ if os.name != "posix":
     )
     sys.exit(1)
 
-from .cli import parse_args, run_and_tail_async
+from .cli import (
+    parse_args,
+    run_and_tail_async,
+    tool_command_wrapper,
+    log_paths_command,
+)
 from .server import run_server
 
 
 def main():
     """Main entry point for the persistproc command."""
+    # --- Implicit 'run' subcommand logic ---
+    args = sys.argv[1:]
+    known_commands = {
+        "serve",
+        "run",
+        "list",
+        "status",
+        "stop",
+        "restart",
+        "output",
+        "log-paths",
+    }
+    # Check if the first argument is a known command or an option
+    if args and args[0] not in known_commands and not args[0].startswith("-"):
+        sys.argv.insert(1, "run")
+
     parser, args = parse_args()
 
     # Setup logging
@@ -35,9 +56,11 @@ def main():
     # Silence the noisy fastmcp logger
     logging.getLogger("fastmcp").setLevel(logging.WARNING)
 
-    if args.serve:
+    if args.subcommand == "serve":
         run_server(args.host, args.port)
-    elif args.command:
+    elif args.subcommand == "run":
+        if not args.command:
+            parser.error("the following arguments are required: command")
         try:
             asyncio.run(run_and_tail_async(args))
         except KeyboardInterrupt:
@@ -48,6 +71,25 @@ def main():
                 "\n--- Detaching from log tailing. Process remains running. ---",
                 file=sys.stderr,
             )
+    elif args.subcommand == "list":
+        asyncio.run(tool_command_wrapper(args, "list_processes"))
+    elif args.subcommand == "status":
+        asyncio.run(tool_command_wrapper(args, "get_process_status", {"pid": args.pid}))
+    elif args.subcommand == "stop":
+        asyncio.run(
+            tool_command_wrapper(
+                args, "stop_process", {"pid": args.pid, "force": args.force}
+            )
+        )
+    elif args.subcommand == "restart":
+        asyncio.run(tool_command_wrapper(args, "restart_process", {"pid": args.pid}))
+    elif args.subcommand == "output":
+        params = {"pid": args.pid, "stream": args.stream}
+        if args.lines:
+            params["lines"] = args.lines
+        asyncio.run(tool_command_wrapper(args, "get_process_output", params))
+    elif args.subcommand == "log-paths":
+        asyncio.run(log_paths_command(args))
     else:
         # No command provided - show help
         parser.print_help()
