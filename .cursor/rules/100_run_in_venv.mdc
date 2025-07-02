@@ -1,0 +1,8 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+REQUIRED: Always invoke Python-related commands via ./run-in-venv.sh.
+FORBIDDEN: Never call bare `python`, `pytest`, or `pip`.
+ENCOURAGED: Disable coverage tests when filtering to specific tests

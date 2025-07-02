@@ -10,6 +10,7 @@ import json
 import re
 import asyncio
 import subprocess
+from pathlib import Path
 
 from fastmcp.client import Client
 
@@ -191,3 +192,57 @@ class TestMCPToolsIntegration:
             # Clean up the subprocess
             cli_process.terminate()
             await cli_process.wait()
+
+    async def test_cli_raw_tail(self, mcp_client: Client, live_server_url):
+        """Run CLI with --raw and verify timestamped output lines are emitted."""
+
+        host, port = live_server_url.split(":")[-2].strip("/"), live_server_url.split(
+            ":"
+        )[-1].strip("/")
+
+        script_path = (
+            Path(__file__).parent.parent / "support_scripts" / "count_print.py"
+        ).resolve()
+
+        # Command that prints predictable lines
+        command_to_run = f"python {script_path}"
+
+        # Launch CLI client in raw mode
+        cli_proc = await asyncio.create_subprocess_exec(
+            "python",
+            "-m",
+            "persistproc",
+            "--host",
+            host,
+            "--port",
+            port,
+            "--raw",
+            *command_to_run.split(),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        try:
+            # Wait for some output
+            raw_lines = []
+            for _ in range(10):
+                line = await asyncio.wait_for(cli_proc.stdout.readline(), timeout=3)
+                if not line:
+                    break
+                decoded = line.decode()
+                raw_lines.append(decoded)
+                if "COUNT 0" in decoded:
+                    break
+
+            assert any(
+                "COUNT 0" in l for l in raw_lines
+            ), "Expected raw log output not received"
+
+            # Raw lines should start with ISO timestamp
+            import re, datetime
+
+            ts_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.")
+            assert any(ts_pattern.match(l) for l in raw_lines)
+        finally:
+            cli_proc.terminate()
+            await cli_proc.wait()

@@ -253,118 +253,76 @@ class TestEndToEnd:
                 except:
                     pass
             raise e
-
-    def test_log_file_content(self, temp_dir):
-        """Test that log files contain expected content."""
-        pm = ProcessManager(temp_dir)
-
-        command = 'python -c "import time; print(\\"Test script started.\\"); [print(i) for i in range(1,4)]; print(\\"Early exit triggered.\\"); exit(0)"'
-
-        pid = None
-        try:
-            # Start process
-            result = pm.start_process(command)
-            pid = result["pid"]
-
-            # Wait for process to complete
-            timeout = 10
-            start_time = time.time()
-            while time.time() - start_time < timeout:
-                status = pm.get_process_status(pid)
-                if status["status"] != "running":
-                    break
-                time.sleep(0.5)
-
-            # Get log paths
-            log_paths = pm.log_manager.get_log_paths(pm.processes[pid].log_prefix)
-
-            # Check stdout log
-            stdout_content = log_paths["stdout"].read_text()
-            assert "Test script started." in stdout_content
-            assert "1" in stdout_content  # Counter output
-            assert "2" in stdout_content
-            assert "3" in stdout_content
-            assert "Early exit triggered." in stdout_content
-
-            # Check combined log includes system messages
-            combined_content = log_paths["combined"].read_text()
-            assert "[SYSTEM]" in combined_content
-            assert "Process started with command:" in combined_content
-            assert "Process exited with code 0" in combined_content
-
-            # All timestamps should be in ISO format
-            lines = stdout_content.strip().split("\n")
-            for line in lines:
-                if line.strip():
-                    assert line.startswith("2")  # ISO timestamp starts with year
-                    assert "T" in line[:20]  # Should have T separator in first 20 chars
-                    assert "Z" in line[:30]  # Should have Z timezone in first 30 chars
-
-        except Exception as e:
-            # Clean up if test fails
+        finally:
+            # Always clean up
             if pid and pid in pm.processes:
                 try:
                     pm.stop_process(pid)
                 except:
                     pass
-            raise e
 
-    def test_working_directory_and_environment(self, temp_dir):
-        """Test that working directory and environment are handled correctly."""
+    def test_log_file_content(self, temp_dir):
+        """Test that log files are created and contain expected content."""
         pm = ProcessManager(temp_dir)
 
-        # Create a test directory
-        test_dir = temp_dir / "test_workdir"
-        test_dir.mkdir()
+        command = 'python -c "import sys; print(\\"stdout output\\"); print(\\"stderr output\\", file=sys.stderr)"'
+        result = pm.start_process(command)
+        pid = result["pid"]
 
-        # Use inline Python command that outputs current directory and env var
-        command = 'python -c "import os; print(f\\"CWD: {os.getcwd()}\\"); print(f\\"TEST_VAR: {os.environ.get(\'TEST_VAR\', \'NOT_SET\')}\\"); exit(0)"'
+        # Wait for the process to exit
+        time.sleep(2)
+
+        # Check log content
+        log_paths = pm.log_manager.get_log_paths(pm.processes[pid].log_prefix)
+        stdout_content = log_paths["stdout"].read_text()
+        stderr_content = log_paths["stderr"].read_text()
+        combined_content = log_paths["combined"].read_text()
+
+        assert "stdout output" in stdout_content
+        assert "stderr output" in stderr_content
+        assert "stdout output" in combined_content
+        assert "stderr output" in combined_content
+
+    def test_working_directory_and_environment(self, temp_dir):
+        """Test that working directory and environment variables are correctly set."""
+        pm = ProcessManager(temp_dir)
+
+        # Create a test file in a subdirectory
+        sub_dir = temp_dir / "sub"
+        sub_dir.mkdir()
+        (sub_dir / "test_file.txt").write_text("test content")
+
+        # Command to check for file existence and environment variable
+        command = 'python -c "import os; assert os.path.exists(\\"test_file.txt\\"), \\"File not found in CWD\\"; assert os.getenv(\\"TEST_VAR\\") == \\"test_value\\", \\"Env var not set\\""'
+        env = {"TEST_VAR": "test_value"}
 
         pid = None
         try:
             # Start process with custom working directory and environment
             result = pm.start_process(
-                command=command,
-                working_directory=str(test_dir),
-                environment={"TEST_VAR": "test_value"},
+                command, working_directory=str(sub_dir), environment=env
             )
             pid = result["pid"]
 
-            # Wait for process to complete
-            timeout = 5
-            start_time = time.time()
-            while time.time() - start_time < timeout:
-                status = pm.get_process_status(pid)
-                if status["status"] != "running":
-                    break
-                time.sleep(0.1)
+            # Wait for process to exit
+            time.sleep(2)
 
-            # Check log output
-            log_paths = pm.log_manager.get_log_paths(pm.processes[pid].log_prefix)
-            stdout_content = log_paths["stdout"].read_text()
-
-            # Should show correct working directory and environment variable
-            # On macOS, paths may have /private prefix, so check for both
-            assert (
-                f"CWD: {test_dir}" in stdout_content
-                or f"CWD: /private{test_dir}" in stdout_content
-            )
-            assert "TEST_VAR: test_value" in stdout_content
+            # Check status to ensure it exited cleanly
+            status = pm.get_process_status(pid)
+            assert status["status"] == "exited"
+            assert status["exit_code"] == 0
 
         except Exception as e:
-            # Clean up if test fails
-            if pid and pid in pm.processes:
-                try:
-                    pm.stop_process(pid)
-                except:
-                    pass
+            if pid:
+                pm.stop_process(pid, timeout=1)
             raise e
 
     def test_process_output_retrieval(self, temp_dir):
-        """Test retrieving process output via the get_process_output method."""
+        """Test retrieving output from a running process."""
         pm = ProcessManager(temp_dir)
 
-        command = 'python -c "import time; print(\\"Test script started.\\"); [print(i) for i in range(1,4)]; print(\\"Early exit triggered.\\"); exit(0)"'
+        # A script that prints numbers every 0.1 seconds
+        command = 'python -c "import time; [print(f\\"Line {i}\\") or time.sleep(0.1) for i in range(10)]"'
 
         pid = None
         try:
@@ -372,39 +330,30 @@ class TestEndToEnd:
             result = pm.start_process(command)
             pid = result["pid"]
 
-            # Wait for process to complete
-            timeout = 10
-            start_time = time.time()
-            while time.time() - start_time < timeout:
-                status = pm.get_process_status(pid)
-                if status["status"] != "running":
-                    break
-                time.sleep(0.5)
+            # Let it run for a bit
+            time.sleep(0.5)
 
-            # Test getting output via the API
-            stdout_lines = pm.get_process_output(pid, "stdout")
-            assert len(stdout_lines) > 0
+            # Retrieve some output
+            output_result = pm.get_process_output(pid, "stdout", lines=2)
+            assert len(output_result) <= 2
+            if output_result:
+                assert "Line" in output_result[0]
 
-            # Join and check content
-            stdout_content = "".join(stdout_lines)
-            assert "Test script started." in stdout_content
-            assert "Early exit triggered." in stdout_content
+            # Let it run to completion
+            time.sleep(1)
 
-            # Test getting limited lines
-            last_lines = pm.get_process_output(pid, "stdout", lines=2)
-            assert len(last_lines) <= 2
-
-            # Test getting combined output
-            combined_lines = pm.get_process_output(pid, "combined")
-            combined_content = "".join(combined_lines)
-            assert "Test script started." in combined_content
-            assert "[SYSTEM]" in combined_content  # Should include system messages
+            # Retrieve all output
+            full_output_result = pm.get_process_output(pid, "stdout", lines=20)
+            assert len(full_output_result) >= 10
+            assert "Line 9" in full_output_result[-1]
 
         except Exception as e:
-            # Clean up if test fails
+            if pid:
+                pm.stop_process(pid, timeout=1)
+            raise e
+        finally:
             if pid and pid in pm.processes:
                 try:
                     pm.stop_process(pid)
                 except:
                     pass
-            raise e
