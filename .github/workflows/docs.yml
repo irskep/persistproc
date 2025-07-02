@@ -89,19 +89,21 @@ jobs:
             const repo = `${context.repo.owner}/${context.repo.repo}`;
             const artifactUrl = `https://github.com/${repo}/actions/runs/${runId}#artifacts`;
             
-            const commentBody = `📚 Documentation Preview
-
-The documentation has been built for this PR. You can download it here:
-
-🔗 **[Download Documentation Artifact](${artifactUrl})**
-
-**Instructions:**
-1. Click the link above and scroll to the "Artifacts" section
-2. Download the \`docs-preview-pr-${prNumber}\` artifact
-3. Extract the ZIP file
-4. Open \`index.html\` in your browser
-
-*Note: You must be logged in to GitHub to download artifacts.*`;
+            const commentBody = [
+              '📚 Documentation Preview',
+              '',
+              'The documentation has been built for this PR. You can download it here:',
+              '',
+              `🔗 **[Download Documentation Artifact](${artifactUrl})**`,
+              '',
+              '**Instructions:**',
+              '1. Click the link above and scroll to the "Artifacts" section',
+              `2. Download the \`docs-preview-pr-${prNumber}\` artifact`,
+              '3. Extract the ZIP file',
+              '4. Open `index.html` in your browser',
+              '',
+              '*Note: You must be logged in to GitHub to download artifacts.*'
+            ].join('\n');
             
             try {
               const { data: comments } = await github.rest.issues.listComments({
