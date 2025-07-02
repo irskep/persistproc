@@ -27,16 +27,32 @@ async def mcp_client(mcp_server):
 
 async def call_json(client: Client, tool: str, args: dict):
     """Call a tool and return the parsed JSON payload."""
-    res = await client.call_tool(tool, args)
-    # fastmcp returns a list of Content objects; handle that
-    if isinstance(res, list):
-        if not res:
-            return None
-        first = res[0]
-        if hasattr(first, "text"):
-            return json.loads(first.text)
-        return first
-    return res
+    import httpx, asyncio
+
+    last_exc: Exception | None = None
+    for _ in range(8):
+        try:
+            res = await client.call_tool(tool, args)
+            # fastmcp returns a list of Content objects; handle that
+            if isinstance(res, list):
+                if not res:
+                    return None
+                first = res[0]
+                if hasattr(first, "text"):
+                    return json.loads(first.text)
+                return first
+            return res
+        except httpx.HTTPStatusError as e:
+            # Retry transient 5xx errors stemming from FastMCP lifespan race conditions
+            if e.response.status_code >= 500:
+                last_exc = e
+                await asyncio.sleep(0.3)
+                continue
+            raise
+    # Retries exhausted – re-raise last exception if present, else generic RuntimeError
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("call_json retries exhausted without response")
 
 
 class TestMCPToolsIntegration:
