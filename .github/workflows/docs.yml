@@ -9,12 +9,7 @@ on:
       - 'requirements-docs.txt'
       - '.github/**/*.yml'
   pull_request:
-    paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - 'mkdocs-local.yml'
-      - 'requirements-docs.txt'
-      - '.github/**/*.yml'
+    # Run on any PR; internal step decides whether to build
 
 permissions:
   contents: read
