@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from fastmcp.client import Client
 
 logger = logging.getLogger("persistproc")
@@ -200,104 +201,94 @@ async def run_and_tail_async(args: argparse.Namespace):
     command_str = " ".join(args.command)
     mcp_url = f"http://{args.host}:{args.port}/mcp/"
 
-    try:
-        client = Client(mcp_url)
-        async with client:
-            p_info = None
-            # Capture the calling environment to ensure commands are found on the server
-            call_env = dict(os.environ)
+    client = Client(mcp_url)
+    async with client:
+        p_info = None
+        # Capture the calling environment to ensure commands are found on the server
+        call_env = dict(os.environ)
 
-            # First, attempt to start the process
-            logger.debug(f"Requesting to start command: '{command_str}'")
-            start_result = await client.call_tool(
-                "start_process",
-                {
-                    "command": command_str,
-                    "working_directory": os.getcwd(),
-                    "environment": call_env,
-                },
-            )
-            start_info = json.loads(start_result[0].text)
-
-            # Check if it was already running
-            if "error" in start_info and "is already running" in start_info["error"]:
-                pid_match = re.search(r"PID (\d+)", start_info["error"])
-                if not pid_match:
-                    logger.error(
-                        f"Server error: Could not parse PID from error message: {start_info['error']}"
-                    )
-                    sys.exit(1)
-
-                existing_pid = int(pid_match.group(1))
-
-                if args.restart:
-                    logger.info(
-                        f"Process '{command_str}' is running (PID {existing_pid}). Restarting as requested."
-                    )
-                    restart_result = await client.call_tool(
-                        "restart_process", {"pid": existing_pid}
-                    )
-                    p_info = json.loads(restart_result[0].text)
-                else:
-                    logger.info(
-                        f"Process '{command_str}' is already running with PID {existing_pid}."
-                    )
-                    logger.info(
-                        "Tailing existing logs. Use --restart to force a new process."
-                    )
-                    status_result = await client.call_tool(
-                        "get_process_status", {"pid": existing_pid}
-                    )
-                    p_info = json.loads(status_result[0].text)
-
-            # Check for other errors during start
-            elif "error" in start_info:
-                logger.error(
-                    f"Server returned an error on start: {start_info['error']}"
-                )
-                sys.exit(1)
-
-            # If no error, it's a fresh start
-            else:
-                logger.info(f"Starting process '{command_str}' for the first time.")
-                p_info = start_info
-
-            # Final check on the process info we ended up with
-            if not p_info or "error" in p_info:
-                logger.error(
-                    f"Failed to get a valid process state to monitor: {p_info.get('error', 'Unknown error')}"
-                )
-                sys.exit(1)
-
-            pid = p_info.get("pid")
-            if not pid:
-                logger.error(f"Could not get PID from server response: {p_info}")
-                sys.exit(1)
-
-            # 2. Get log path
-            logs_result = await client.call_tool("get_process_log_paths", {"pid": pid})
-            log_paths_str = logs_result[0].text
-            if "error" in log_paths_str:
-                log_paths = json.loads(log_paths_str)
-                logger.error(
-                    f"Server returned an error on get_process_log_paths: {log_paths['error']}"
-                )
-                sys.exit(1)
-
-            log_paths = json.loads(log_paths_str)
-            combined_log_path = Path(log_paths["combined"])
-
-            # 3. Tail the log file, monitoring for restarts
-            await tail_and_monitor_process_async(
-                client, pid, command_str, combined_log_path, args, p_info
-            )
-
-    except Exception as e:
-        logger.error(
-            f"Failed to connect to persistproc server at {mcp_url}. Is it running with '--serve'?"
+        # First, attempt to start the process
+        logger.debug(f"Requesting to start command: '{command_str}'")
+        start_result = await client.call_tool(
+            "start_process",
+            {
+                "command": command_str,
+                "working_directory": os.getcwd(),
+                "environment": call_env,
+            },
         )
-        logger.debug(f"Connection details: {e}")
-        sys.exit(1)
+        start_info = json.loads(start_result[0].text)
+
+        # Check if it was already running
+        if "error" in start_info and "is already running" in start_info["error"]:
+            pid_match = re.search(r"PID (\d+)", start_info["error"])
+            if not pid_match:
+                logger.error(
+                    f"Server error: Could not parse PID from error message: {start_info['error']}"
+                )
+                sys.exit(1)
+
+            existing_pid = int(pid_match.group(1))
+
+            if args.restart:
+                logger.info(
+                    f"Process '{command_str}' is running (PID {existing_pid}). Restarting as requested."
+                )
+                restart_result = await client.call_tool(
+                    "restart_process", {"pid": existing_pid}
+                )
+                p_info = json.loads(restart_result[0].text)
+            else:
+                logger.info(
+                    f"Process '{command_str}' is already running with PID {existing_pid}."
+                )
+                logger.info(
+                    "Tailing existing logs. Use --restart to force a new process."
+                )
+                status_result = await client.call_tool(
+                    "get_process_status", {"pid": existing_pid}
+                )
+                p_info = json.loads(status_result[0].text)
+
+        # Check for other errors during start
+        elif "error" in start_info:
+            logger.error(f"Server returned an error on start: {start_info['error']}")
+            sys.exit(1)
+
+        # If no error, it's a fresh start
+        else:
+            logger.info(f"Starting process '{command_str}' for the first time.")
+            p_info = start_info
+
+        # Final check on the process info we ended up with
+        if not p_info or "error" in p_info:
+            logger.error(
+                f"Failed to get a valid process state to monitor: {p_info.get('error', 'Unknown error')}"
+            )
+            sys.exit(1)
+
+        pid = p_info.get("pid")
+        if not pid:
+            logger.error(f"Could not get PID from server response: {p_info}")
+            sys.exit(1)
+
+        # 2. Get log path
+        logs_result = await client.call_tool("get_process_log_paths", {"pid": pid})
+        log_paths_str = logs_result[0].text
+        if "error" in log_paths_str:
+            log_paths = json.loads(log_paths_str)
+            logger.error(
+                f"Server returned an error on get_process_log_paths: {log_paths['error']}"
+            )
+            sys.exit(1)
+
+        log_paths = json.loads(log_paths_str)
+        combined_log_path = Path(log_paths["combined"])
+
+        # 3. Tail the log file, monitoring for restarts
+        await tail_and_monitor_process_async(
+            client, pid, command_str, combined_log_path, args, p_info
+        )
 
 
 POLL_INTERVAL = 1.0  # seconds
@@ -359,12 +350,22 @@ async def tail_and_monitor_process_async(
             )
             return
 
+        print(
+            f"--- Tailing output for PID {current_pid} ('{command_str}') ---",
+            file=sys.stderr,
+        )
+        if current_pid != initial_pid:
+            print(
+                f"--- Process was restarted. Original PID was {initial_pid}. ---",
+                file=sys.stderr,
+            )
+
         stop_tail_event = threading.Event()
 
         def tail_worker(raw_log: bool):
             """The actual tailing logic that runs in a thread."""
             try:
-                log_file.seek(0, 2)  # Go to the end of the file
+                log_file.seek(0, 2)
                 while not stop_tail_event.is_set():
                     line = log_file.readline()
                     if not line:
@@ -372,6 +373,7 @@ async def tail_and_monitor_process_async(
                             break
                         time.sleep(0.1)
                         continue
+
                     if raw_log:
                         output_line = line
                     else:
@@ -385,84 +387,98 @@ async def tail_and_monitor_process_async(
                     log_file.close()
                 logger.debug("Tail worker finished.")
 
-        tail_worker_thread = threading.Thread(
+        tail_thread = threading.Thread(
             target=tail_worker, args=(args.raw,), daemon=True
         )
-        tail_worker_thread.start()
+        tail_thread.start()
 
-        # Monitor for process changes or shutdown signals
-        while tail_worker_thread.is_alive():
-            if shutdown_event.is_set():
-                stop_tail_event.set()
-                break
-            await asyncio.sleep(0.1)
+        process_truly_exited = False
+        restarted_proc = None
 
-        tail_worker_thread.join(timeout=0.1)
-
-        if shutdown_event.is_set():
-            break
-
-        # If we get here, the log tailing ended because the process likely exited.
-        # We now check for a restart.
-        logger.info(
-            f"--- Log stream for PID {current_pid} ended. Checking for restart... ---"
-        )
-        await asyncio.sleep(POLL_INTERVAL)  # Give server time to notice restart
-
+        # Main monitoring loop
         try:
-            all_processes = json.loads(
-                (await client.call_tool("list_processes"))[0].text
-            )
-        except Exception:
-            logger.error("Could not reach server to check for restart. Detaching.")
-            break
+            while tail_thread.is_alive() and not shutdown_event.is_set():
+                try:
+                    status_result = await client.call_tool(
+                        "get_process_status", {"pid": current_pid}
+                    )
+                    p_status = json.loads(status_result[0].text)
+                    if "error" in p_status or p_status.get("status") not in (
+                        "running",
+                        "starting",
+                    ):
+                        process_truly_exited = True
+                        break  # Exit monitoring loop, process is gone.
+                except Exception:
+                    logger.warning("Could not get process status. Assuming it exited.")
+                    process_truly_exited = True
+                    break
+                await asyncio.sleep(1.0)  # Polling interval
 
-        restarted_proc = find_restarted_process(
-            all_processes, command_str, last_known_start_time
-        )
-        if restarted_proc:
-            new_pid = restarted_proc["pid"]
-            new_start_time = restarted_proc["start_time"]
-            logger.info(
-                f"--- Process was restarted. Original PID was {current_pid}, new PID is {new_pid}. Tailing new logs. ---"
-            )
-            current_pid = new_pid
-            last_known_start_time = new_start_time
-            # Update log path for the new process
-            log_paths_result = await client.call_tool(
-                "get_process_log_paths", {"pid": new_pid}
-            )
-            log_paths = json.loads(log_paths_result[0].text)
-            current_log_path = Path(log_paths["combined"])
-        else:
-            logger.info("--- Process has not restarted. Detaching from logs. ---")
-            break
+            if shutdown_event.is_set():
+                # User-initiated shutdown
+                break
 
-    # After the main loop (due to Ctrl+C or process exit)
-    if shutdown_event.is_set():
-        # Handle the exit action based on user input or args
-        final_action = args.on_exit
-        if final_action == "ask":
-            try:
-                choice = input(
-                    "Stop the running process or detach from it? (s/d) "
-                ).lower()
-                if choice == "s":
-                    final_action = "stop"
+            if process_truly_exited:
+                list_res = await client.call_tool("list_processes", {})
+                all_procs = json.loads(list_res[0].text)
+                restarted_proc = find_restarted_process(
+                    all_procs, command_str, last_known_start_time
+                )
+
+                if restarted_proc:
+                    current_pid = restarted_proc["pid"]
+                    last_known_start_time = restarted_proc["start_time"]
+                    logs_result = await client.call_tool(
+                        "get_process_log_paths", {"pid": current_pid}
+                    )
+                    log_paths = json.loads(logs_result[0].text)
+                    current_log_path = Path(log_paths["combined"])
+                    # Continue the outer `while` to start tailing the new process
                 else:
-                    final_action = "detach"
+                    logger.info("Process has exited and was not restarted.")
+                    break  # Exit the outer `while` loop
+        finally:
+            # Cleanly stop the tailing thread
+            stop_tail_event.set()
+            tail_thread.join(timeout=2.0)
+
+    # After the main loop, decide what to do on user-initiated exit
+    if shutdown_event.is_set():
+        logger.debug("Shutdown event received, deciding action.")
+        should_stop = False
+        if args.on_exit == "stop":
+            should_stop = True
+        elif args.on_exit == "detach":
+            should_stop = False
+        elif sys.stdin.isatty():
+            try:
+                stop_choice = input(
+                    f"Stop running process '{command_str}' (PID {current_pid})? [y/N] "
+                )
+                if stop_choice.lower() == "y":
+                    should_stop = True
             except (EOFError, KeyboardInterrupt):
-                final_action = "detach"
-                print("\nDetaching by default.")
+                print()  # Print a newline to make output cleaner
+                should_stop = False
 
-        if final_action == "stop":
-            logger.info(f"Stopping process {current_pid} as requested.")
-            await client.call_tool("stop_process", {"pid": current_pid})
-            logger.info("Process stopped.")
+        if should_stop:
+            print(f"--- Stopping process {current_pid}... ---", file=sys.stderr)
+            try:
+                await client.call_tool("stop_process", {"pid": current_pid})
+            except Exception as e:
+                logger.error(f"Failed to stop process {current_pid}: {e}")
         else:
-            logger.info("Detaching from process. It will continue running.")
+            print(
+                "\n--- Detaching from log tailing. Process remains running. ---",
+                file=sys.stderr,
+            )
 
-    logger.debug("Tailing and monitoring finished.")
+    # Cleanup signal handler
+    try:
+        loop.remove_signal_handler(signal.SIGINT)
+    except NotImplementedError:
+        pass
 
 
 def find_restarted_process(

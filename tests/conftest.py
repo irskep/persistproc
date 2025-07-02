@@ -96,6 +96,10 @@ def live_server_url(free_port, temp_dir_session, monkeypatch_session):
 
     # Ensure monitor thread is stopped after tests
     yield f"http://127.0.0.1:{free_port}"
+    # Add a small delay on teardown to allow client processes in tests to
+    # complete their shutdown sequence before the server vanishes. This helps
+    # prevent race conditions in tests like test_tail_auto_exit.
+    time.sleep(0.5)
     server_state["process_manager"].stop_monitor_thread()
 
 
