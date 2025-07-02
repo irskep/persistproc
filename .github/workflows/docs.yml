@@ -86,13 +86,7 @@ jobs:
             const prNumber = context.payload.pull_request.number;
             const runId = context.runId;
             const repo = context.repo.owner + '/' + context.repo.repo;
-            const commentBody = `📚 **Documentation Preview**
-
-Download the built documentation artifact for this PR:
-
-👉 https://github.com/${repo}/actions/runs/${runId}
-
-Extract the ZIP and open  index.html  in your browser.`;
+            const commentBody = `📚 Documentation Preview\n\nDownload the built documentation artifact for this PR:\n\nhttps://github.com/${repo}/actions/runs/${runId}\n\nAfter downloading, extract the ZIP and open index.html in your browser.`;
             
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
