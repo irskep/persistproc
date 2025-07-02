@@ -11,6 +11,7 @@ import re
 import asyncio
 import subprocess
 from pathlib import Path
+import httpx
 
 from fastmcp.client import Client
 
@@ -35,8 +36,20 @@ async def call_json(client: Client, tool: str, args: dict):
 async def mcp_client(live_server_url):
     """Provides an initialized fastmcp Client for each test function."""
     client = Client(f"{live_server_url}/mcp/")
-    async with client:
-        yield client
+    try:
+        async with client:
+            yield client
+    except httpx.HTTPStatusError as e:
+        # On some python/OS combos, the server throws a 500 error on
+        # client disconnect during test teardown. This is a known
+        # issue with the underlying library, and since it happens
+        # during teardown, we can safely ignore it.
+        if e.response.status_code != 500:
+            raise
+    except httpx.ConnectError:
+        # This can also happen during teardown if the server is already gone.
+        # This is acceptable during the cleanup phase of the fixture.
+        pass
 
 
 class TestMCPToolsIntegration:
