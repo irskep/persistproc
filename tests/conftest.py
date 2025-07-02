@@ -75,11 +75,12 @@ def live_server_url(free_port, temp_dir_session, monkeypatch_session):
         for _ in range(retries):
             try:
                 async with Client(f"{url}/mcp/") as probe_client:
-                    # A no-op list_tools call is inexpensive and exercises the full stack.
                     await probe_client.call_tool("list_processes", {})
-                    return  # Success, server ready
+                    # require a second successive success to be extra sure
+                    await anyio.sleep(0.15)
+                    await probe_client.call_tool("list_processes", {})
+                    return  # double-green: server ready
             except Exception:
-                # Server not ready yet – wait a bit and retry.
                 await anyio.sleep(0.25)
         # If we exhaust retries, raise so the fixture fails fast with a clearer message.
         raise RuntimeError(
