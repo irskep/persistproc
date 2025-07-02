@@ -45,11 +45,76 @@ jobs:
         run: |
           mkdocs build --strict
           
-      - name: Upload artifact
+      - name: Upload Pages artifact (for main branch)
         if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v2
         with:
           path: './site'
+          
+      - name: Upload PR preview artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v3
+        with:
+          name: docs-preview-pr-${{ github.event.number }}
+          path: './site'
+          retention-days: 30
+
+  comment:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Comment on PR
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const runId = context.runId;
+            
+            const comment = `## 📚 Documentation Preview
+            
+            The documentation has been built for this PR! You can preview the changes by downloading the artifact:
+            
+            1. Go to the [Actions tab](https://github.com/${{ github.repository }}/actions/runs/${runId})
+            2. Scroll down to the "Artifacts" section
+            3. Download \`docs-preview-pr-${prNumber}\`
+            4. Extract the ZIP file and open \`index.html\` in your browser
+            
+            **Or use this direct link to the run:** https://github.com/${{ github.repository }}/actions/runs/${runId}
+            
+            The artifact will be available for 30 days and will be automatically cleaned up.`;
+            
+            // Check if we already commented
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            
+            const existingComment = comments.find(comment => 
+              comment.user.login === 'github-actions[bot]' && 
+              comment.body.includes('Documentation Preview')
+            );
+            
+            if (existingComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: comment
+              });
+            }
 
   deploy:
     if: github.ref == 'refs/heads/main'
