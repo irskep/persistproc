@@ -8,8 +8,6 @@ A shared process layer for multi-agent development workflows
 
 ---
 
-> For the most up-to-date and complete documentation, please visit [steveasleep.com/persistproc](https://steveasleep.com/persistproc).
-
 ## What is `persistproc`?
 
 When developing locally, you often need long-running processes like web servers, bundlers, or test watchers. Depending on where you start these processes, agents may or may not have access to them. If you start your web server from Cursor, then Claude Code can't see its output. If you prefer to run things in iTerm instead of the Cursor terminal, then Cursor's agents can't see or control the server process.
@@ -113,4 +111,4 @@ Use `./run-in-venv.sh` to install dependencies in a virtualenv and run `persistp
 
 ## License
 
-This project is licensed under the MIT License. 
+This project is licensed under the MIT License.

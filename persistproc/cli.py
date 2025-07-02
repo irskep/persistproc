@@ -41,8 +41,8 @@ Examples:
   # To view the full, timestamped log file output:
   persistproc --raw sleep 30
 
-  # Run a command with quotes and tail its output
-  persistproc "python -m http.server"
+  # Run a command with arguments
+  persistproc python -m http.server
 """,
     )
     parser.add_argument(
