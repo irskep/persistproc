@@ -9,7 +9,6 @@ on:
       - 'requirements-docs.txt'
       - '.github/**/*.yml'
   pull_request:
-    branches: [ main ]
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
