@@ -36,6 +36,8 @@ class TestCLIServerInteraction:
             host,
             "--port",
             port,
+            "--on-exit",
+            "detach",
             *command_to_tail.split(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -74,28 +76,35 @@ class TestCLIServerInteraction:
 
             # Check the CLI client's output to see if it detected the restart
             output_found = False
-            try:
-                # Read stderr line-by-line to find the restart message
-                for _ in range(40):  # Up to ~20 seconds
-                    line = await asyncio.wait_for(
-                        cli_process.stderr.readline(), timeout=1.0
+            start_time = asyncio.get_event_loop().time()
+            stderr_output = b""
+            while asyncio.get_event_loop().time() - start_time < 20:
+                try:
+                    chunk = await asyncio.wait_for(
+                        cli_process.stderr.read(1024), timeout=0.1
                     )
-                    if not line:
+                    if not chunk:
                         break
-                    decoded_line = line.decode()
-                    if f"restarted. Now tracking new PID {new_pid}" in decoded_line:
+                    stderr_output += chunk
+                    if (
+                        f"Process was restarted. Original PID was {old_pid}".encode()
+                        in stderr_output
+                    ):
                         output_found = True
                         break
-                    await asyncio.sleep(0.5)
-            except asyncio.TimeoutError:
-                pass  # The assertion below will handle the failure.
+                except asyncio.TimeoutError:
+                    pass  # No new output, continue polling
+                await asyncio.sleep(0.2)
 
-            assert output_found, "Did not find restart message in client stderr."
+            assert (
+                output_found
+            ), f"Did not find restart message in client stderr. Full output:\n{stderr_output.decode(errors='ignore')}"
 
         finally:
             # Clean up the subprocess
-            cli_process.terminate()
-            await cli_process.wait()
+            if cli_process.returncode is None:
+                cli_process.terminate()
+                await cli_process.wait()
 
     async def test_cli_raw_tail(self, live_server_url):
         """Run CLI with --raw and verify timestamped output lines are emitted."""
@@ -121,6 +130,8 @@ class TestCLIServerInteraction:
             "--port",
             port,
             "--raw",
+            "--on-exit",
+            "detach",
             *command_to_run.split(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

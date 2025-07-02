@@ -3,6 +3,7 @@ import os
 import signal
 import sys
 from pathlib import Path
+from typing import Optional
 
 import json
 import pytest
@@ -13,9 +14,11 @@ import httpx
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
-async def _launch_cli(host: str, port: str, *extra_args: str):
+async def _launch_cli(
+    host: str, port: str, *extra_args: str, on_exit: Optional[str] = "detach"
+):
     """Helper to start the persistproc CLI as subprocess, returns process handle."""
-    return await asyncio.create_subprocess_exec(
+    cli_args = [
         sys.executable,
         "-m",
         "persistproc",
@@ -23,7 +26,14 @@ async def _launch_cli(host: str, port: str, *extra_args: str):
         host,
         "--port",
         port,
-        *extra_args,
+    ]
+    if on_exit:
+        cli_args.extend(["--on-exit", on_exit])
+
+    cli_args.extend(extra_args)
+
+    return await asyncio.create_subprocess_exec(
+        *cli_args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         stdin=asyncio.subprocess.PIPE,
@@ -40,7 +50,9 @@ class TestCLIBehaviours:
         script_path = (
             Path(__file__).parent / "support_scripts" / "count_print.py"
         ).resolve()
-        proc = await _launch_cli(host, port, sys.executable, str(script_path))
+        proc = await _launch_cli(
+            host, port, sys.executable, str(script_path), on_exit=None
+        )
 
         try:
             # Wait until CLI exits on its own (process prints 5 lines then exits ~1s)
