@@ -92,7 +92,7 @@ Download the built documentation artifact for this PR:
 
 👉 https://github.com/${repo}/actions/runs/${runId}
 
-Extract the ZIP and open index.html in your browser.`;
+Extract the ZIP and open  index.html  in your browser.`;
             
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
