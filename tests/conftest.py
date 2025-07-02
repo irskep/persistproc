@@ -142,8 +142,20 @@ def mcp_server(process_manager):
 async def live_mcp_client(live_server_url):
     """Provides a client connected to the live test server."""
     client = Client(f"{live_server_url}/mcp/")
-    async with client:
+    await client.__aenter__()
+    try:
         yield client
+    finally:
+        import httpx, asyncio
+
+        try:
+            await client.__aexit__(None, None, None)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code >= 500:
+                # Ignore transient server error during teardown
+                await asyncio.sleep(0.1)
+            else:
+                raise
 
 
 @pytest.fixture

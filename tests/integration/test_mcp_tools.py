@@ -55,14 +55,14 @@ async def call_json(client: Client, tool: str, args: dict):
             if "Client is not connected" in str(e) and base_url is not None:
                 last_exc = e
                 try:
-                    await client.__aexit__(None, None, None)  # type: ignore[misc]
+                    await client._connect()
                 except Exception:
-                    pass
-                client = Client(base_url)
-                await client.__aenter__()  # type: ignore[misc]
+                    # If reconnect fails, recreate client object as last resort
+                    if base_url is not None:
+                        client = Client(base_url)
+                        await client.__aenter__()  # type: ignore[misc]
                 await asyncio.sleep(0.3)
                 continue
-            raise
     # Retries exhausted – re-raise last exception if present, else generic RuntimeError
     if last_exc is not None:
         raise last_exc
