@@ -1,4 +1,4 @@
-name: Build and Deploy Documentation
+THIS SHOULD BE A LINTER ERRORname: Build and Deploy Documentation
 
 on:
   push:
