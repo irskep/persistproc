@@ -118,7 +118,7 @@ persistproc --list
 
 ## Step 5: Your First Managed Process
 
-Now let's start a real development server. If you have a Node.js project:
+Now let's start a real development server. For a Node.js project:
 
 ### Option A: Via AI Agent
 

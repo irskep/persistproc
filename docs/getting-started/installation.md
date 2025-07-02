@@ -99,7 +99,7 @@ persistproc echo "Installation test successful!"
 
 ### For AI Agent Development
 
-If you're building tools that integrate with persistproc:
+For building tools that integrate with persistproc:
 
 ```bash
 pip install persistproc[dev]

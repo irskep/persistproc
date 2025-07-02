@@ -10,57 +10,57 @@
 
 ## The Problem We Solve
 
-In the modern development landscape, you're likely using multiple AI agents and tools simultaneously. This creates a frustrating problem: **process isolation**.
+When using multiple AI agents and development tools simultaneously, a common problem emerges: **process isolation**.
 
-=== "Before persistproc"
+### Without persistproc
 
-    ```mermaid
-    graph TD
-        subgraph "Your Environment"
-            A[iTerm] -- "runs" --> P1[Webpack Dev Server];
-            B[Cursor] -- "tries to run (FAILS!)" --> P2[Webpack Dev Server];
-            C[Claude Code] -- "asks you to restart manually" --> P3[Manual Intervention];
-        end
-        style P1 fill:#d4edda,stroke:#c3e6cb
-        style P2 fill:#f8d7da,stroke:#f5c6cb
-        style P3 fill:#fff3cd,stroke:#ffeaa7
-    ```
+```mermaid
+graph TD
+    subgraph "Your Environment"
+        A[iTerm] -- "runs" --> P1[Webpack Dev Server];
+        B[Cursor] -- "tries to run (FAILS!)" --> P2[Webpack Dev Server];
+        C[Claude Code] -- "asks you to restart manually" --> P3[Manual Intervention];
+    end
+    style P1 fill:#d4edda,stroke:#c3e6cb
+    style P2 fill:#f8d7da,stroke:#f5c6cb
+    style P3 fill:#fff3cd,stroke:#ffeaa7
+```
 
-    - Port conflicts when agents try to start the same service
-    - Manual restarts breaking your development flow
-    - No visibility into running processes across tools
+**Problems:**
+- Port conflicts when agents try to start the same service
+- Manual restarts breaking development flow
+- No visibility into running processes across tools
 
-=== "After persistproc"
+### With persistproc
 
-    ```mermaid
-    graph TD
-        subgraph "Your Agents"
-            A[iTerm];
-            B[Cursor];
-            C[Claude Code];
-        end
+```mermaid
+graph TD
+    subgraph "Your Agents"
+        A[iTerm];
+        B[Cursor];
+        C[Claude Code];
+    end
 
-        subgraph "The persistproc Hub"
-            Hub(persistproc server);
-            P1[Webpack Dev Server];
-            P2[API Server];
-            P3[Database];
-            Hub -- manages --> P1;
-            Hub -- manages --> P2;
-            Hub -- manages --> P3;
-        end
-        
-        A <--> Hub;
-        B <--> Hub;
-        C <--> Hub;
+    subgraph "The persistproc Hub"
+        Hub(persistproc server);
+        P1[Webpack Dev Server];
+        P2[API Server];
+        P3[Database];
+        Hub -- manages --> P1;
+        Hub -- manages --> P2;
+        Hub -- manages --> P3;
+    end
+    
+    A <--> Hub;
+    B <--> Hub;
+    C <--> Hub;
+```
 
-        subgraph "Benefits"
-            R1["✅ Any agent can start, stop, restart processes"]
-            R2["✅ No port conflicts"]
-            R3["✅ Shared process visibility"]
-            R4["✅ Persistent logs across sessions"]
-        end
-    ```
+**Benefits:**
+- ✅ Any agent can start, stop, restart processes
+- ✅ No port conflicts
+- ✅ Shared process visibility
+- ✅ Persistent logs across sessions
 
 ## Key Features
 
@@ -116,7 +116,7 @@ persistproc --serve
     claude mcp add --transport http persistproc http://127.0.0.1:8947/mcp/
     ```
 
-That's it! Now your AI agents can manage development processes collaboratively.
+AI agents can now manage development processes collaboratively.
 
 ## Real-World Workflow Example
 
@@ -124,7 +124,7 @@ Here's how persistproc transforms a typical web development session:
 
 !!! example "Multi-Agent Web Development"
 
-    **Scenario**: You're building a React app with multiple agents helping you.
+    **Scenario**: Building a React app with multiple agents.
 
     1. **Start Development** (in iTerm):
        ```bash
