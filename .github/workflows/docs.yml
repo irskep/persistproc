@@ -78,6 +78,7 @@ jobs:
     needs: build
     permissions:
       pull-requests: write
+      issues: write
     steps:
       - name: Comment with download link
         uses: actions/github-script@v7
@@ -85,27 +86,59 @@ jobs:
           script: |
             const prNumber = context.payload.pull_request.number;
             const runId = context.runId;
-            const repo = context.repo.owner + '/' + context.repo.repo;
-            const commentBody = `📚 Documentation Preview\n\nDownload the built documentation artifact for this PR:\n\nhttps://github.com/${repo}/actions/runs/${runId}\n\nAfter downloading, extract the ZIP and open index.html in your browser.`;
+            const repo = `${context.repo.owner}/${context.repo.repo}`;
+            const artifactUrl = `https://github.com/${repo}/actions/runs/${runId}#artifacts`;
             
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-            });
-            const existing = comments.find(c => c.user.login === 'github-actions[bot]' && c.body.includes('Documentation Preview'));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body: commentBody
-              });
-            } else {
-              await github.rest.issues.createComment({
+            const commentBody = `📚 Documentation Preview
+
+The documentation has been built for this PR. You can download it here:
+
+🔗 **[Download Documentation Artifact](${artifactUrl})**
+
+**Instructions:**
+1. Click the link above and scroll to the "Artifacts" section
+2. Download the \`docs-preview-pr-${prNumber}\` artifact
+3. Extract the ZIP file
+4. Open \`index.html\` in your browser
+
+*Note: You must be logged in to GitHub to download artifacts.*`;
+            
+            try {
+              const { data: comments } = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
-                body: commentBody
               });
+              
+              const existing = comments.find(c => 
+                c.user.login === 'github-actions[bot]' && 
+                c.body.includes('📚 Documentation Preview')
+              );
+              
+              if (existing) {
+                console.log(`Updating existing comment ${existing.id}`);
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body: commentBody
+                });
+              } else {
+                console.log(`Creating new comment on PR #${prNumber}`);
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  body: commentBody
+                });
+              }
+              console.log('Comment posted successfully');
+            } catch (error) {
+              console.error('Error posting comment:', error);
+              console.error('Error details:', error.message);
+              if (error.response) {
+                console.error('Response status:', error.response.status);
+                console.error('Response data:', error.response.data);
+              }
+              throw error;
             }
