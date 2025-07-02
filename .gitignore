@@ -14,3 +14,4 @@ coverage.xml
 
 # New coverage data directory
 +.coverage_data/
+/site

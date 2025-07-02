@@ -64,22 +64,9 @@ plugins:
 
 nav:
   - Home: index.md
-  - Getting Started:
-    - Quick Start: getting-started/quick-start.md
-    - Installation: getting-started/installation.md
-    - Configuration: getting-started/configuration.md
-  - User Guide:
-    - Core Concepts: user-guide/core-concepts.md
-    - Agent Integration: user-guide/agent-integration.md
-    - Workflows & Examples: user-guide/workflows.md
-    - Troubleshooting: user-guide/troubleshooting.md
-  - API Reference:
-    - MCP Tools: api/mcp-tools.md
-    - CLI Reference: api/cli.md
-  - Development:
-    - Contributing: development/contributing.md
-  - Examples:
-    - Web Development: examples/web-development.md
+  - Installation: installation.md
+  - Agent Configuration: configuring-agents.md
+  - Prompting Tips: prompting-tips.md
 
 extra:
   social:

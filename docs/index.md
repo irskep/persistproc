@@ -1,6 +1,6 @@
 # persistproc
 
-## A shared process layer for the modern, multi-agent development workflow
+A persistent process management server for local development, designed to be controlled by AI agents.
 
 [![PyPI version](https://badge.fury.io/py/persistproc.svg)](https://badge.fury.io/py/persistproc)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -8,82 +8,40 @@
 
 ---
 
-## The Problem We Solve
+## What is `persistproc`?
 
-When using multiple AI agents and development tools simultaneously, a common problem emerges: **process isolation**.
+When developing locally, you often run multiple long-running processes like web servers, bundlers, or test watchers. Managing these across different terminals can be cumbersome, and it's difficult for external tools—like AI agents—to interact with them.
 
-### Without persistproc
+`persistproc` solves this by providing a central server to run and manage your development processes. You can start processes from your terminal, and they will continue to run in the background, managed by the server.
 
-```mermaid
-graph TD
-    subgraph "Your Environment"
-        A[iTerm] -- "runs" --> P1[Webpack Dev Server];
-        B[Cursor] -- "tries to run (FAILS!)" --> P2[Webpack Dev Server];
-        C[Claude Code] -- "asks you to restart manually" --> P3[Manual Intervention];
-    end
-    style P1 fill:#d4edda,stroke:#c3e6cb
-    style P2 fill:#f8d7da,stroke:#f5c6cb
-    style P3 fill:#fff3cd,stroke:#ffeaa7
-```
+The primary way to interact with these processes is through a set of MCP tools. This allows AI agents (in editors like Cursor) to list, start, stop, restart, and view the logs of your development processes.
 
-**Problems:**
-- Port conflicts when agents try to start the same service
-- Manual restarts breaking development flow
-- No visibility into running processes across tools
+## Core Use Case
 
-### With persistproc
+The main goal of `persistproc` is to create a stable layer of background processes that both you and your AI development assistants can see and control.
 
-```mermaid
-graph TD
-    subgraph "Your Agents"
-        A[iTerm];
-        B[Cursor];
-        C[Claude Code];
-    end
+1.  You start the `persistproc` server once.
+2.  You use the `persistproc` command to start your development tasks (e.g., `persistproc npm run dev`).
+3.  Your AI agent, connected to the server, can now manage that process for you—restarting it after it makes a code change, or reading its logs to debug an issue—without needing to interrupt you or ask for terminal access.
 
-    subgraph "The persistproc Hub"
-        Hub(persistproc server);
-        P1[Webpack Dev Server];
-        P2[API Server];
-        P3[Database];
-        Hub -- manages --> P1;
-        Hub -- manages --> P2;
-        Hub -- manages --> P3;
-    end
-    
-    A <--> Hub;
-    B <--> Hub;
-    C <--> Hub;
-```
+This creates a seamless workflow where the agent can autonomously manage the development environment in the background.
 
-**Benefits:**
-- ✅ Any agent can start, stop, restart processes
-- ✅ No port conflicts
-- ✅ Shared process visibility
-- ✅ Persistent logs across sessions
+## Core Functionality
 
-## Key Features
-
-### 🤖 **Agent-First Design**
-Built specifically for modern AI-assisted development workflows. Works seamlessly with Cursor, Claude Code, and any MCP-compatible tool.
-
-### 🔄 **Process Persistence**
-Your development servers survive terminal sessions, tool switches, and environment changes.
-
-### 📊 **Centralized Management**
-One hub to rule them all. Start, stop, restart, and monitor all your development processes from anywhere.
-
-### 🔍 **Rich Observability**
-Real-time logs, process status, and detailed output capture for all managed processes.
-
-### 🌐 **Universal Access**
-Access via CLI, MCP tools, or HTTP API. Your processes are available however you need them.
+*   **Process Server**: A single server (`persistproc --serve`) runs in the background and manages child processes.
+*   **Client CLI**: A simple client (`persistproc <command>`) sends a command to the server and tails its logs to your terminal.
+*   **Agent Tools (MCP)**: A suite of functions exposed over an HTTP endpoint for agents to manage processes. This includes:
+    *   `start_process`
+    *   `stop_process`
+    *   `restart_process`
+    *   `list_processes`
+    *   `get_process_status`
+    *   `get_process_output`
+*   **Log Persistence**: stdout and stderr for each process are captured and stored in log files.
 
 ## Quick Start
 
-Get up and running in 3 steps:
-
-### 1. Install persistproc
+### 1. Install `persistproc`
 
 ```bash
 pip install persistproc
@@ -91,86 +49,55 @@ pip install persistproc
 
 ### 2. Start the Server
 
+Run this in a dedicated terminal that you can leave running.
+
 ```bash
 persistproc --serve
 ```
 
-### 3. Configure Your AI Agent
+The server will log its own status to standard output and manage processes in the background.
 
-=== "Cursor/VS Code"
+### 3. Start a Process
 
-    Add to your `settings.json`:
-    ```json
-    {
-      "mcp.servers": {
-        "persistproc": {
-          "url": "http://127.0.0.1:8947/mcp/"
-        }
-      }
+In another terminal, `cd` to your project's directory and run your command via `persistproc`.
+
+```bash
+# Example: starting a Node.js development server
+cd /path/to/your/project
+persistproc npm run dev
+```
+
+The command is sent to the server, and its output is streamed to your terminal. You can safely close this terminal, and the process will continue to run.
+
+### 4. Configure Your AI Agent
+
+To allow an AI agent to control these processes, configure its MCP client to point to the `persistproc` server.
+
+**Example: Cursor/VS Code `settings.json`**
+```json
+{
+  "mcp.servers": {
+    "persistproc": {
+      "url": "http://127.0.0.1:8947/mcp/"
     }
-    ```
+  }
+}
+```
 
-=== "Claude Code"
+With this, your agent can now use the available tools to manage your development environment.
 
-    ```bash
-    claude mcp add --transport http persistproc http://127.0.0.1:8947/mcp/
-    ```
+**Agent**: "Restart the dev server." -> `restart_process(pid=...)`
+**Agent**: "Show me the latest errors." -> `get_process_output(pid=..., stream="stderr")`
 
-AI agents can now manage development processes collaboratively.
+## Example Agent Interaction
 
-## Real-World Workflow Example
+Once your agent is connected, you can ask it to manage your processes. Assuming you have started a web server with `persistproc npm run dev` (PID 12345), you can now interact with it.
 
-Here's how persistproc transforms a typical web development session:
+*   **You**: "List the running processes."
+    *   **Agent**: Calls `list_processes()` and shows you the running `npm run dev` process.
 
-!!! example "Multi-Agent Web Development"
+*   **You**: "The web server seems stuck. Can you restart it?"
+    *   **Agent**: Identifies the correct process and calls `restart_process(pid=12345)`.
 
-    **Scenario**: Building a React app with multiple agents.
-
-    1. **Start Development** (in iTerm):
-       ```bash
-       persistproc npm run dev
-       ```
-       Your React dev server starts and logs stream to your terminal.
-
-    2. **Make Changes** (in Cursor):
-       Ask your AI assistant: *"The webpack config needs updating for the new CSS framework"*
-       
-       The assistant makes changes, then says: *"I'll restart the dev server for you"* and uses the `restart_process` tool.
-
-    3. **Debug Issues** (in Claude Code):
-       Ask: *"Check the dev server logs for any errors"*
-       
-       The assistant uses `get_process_output` to analyze recent logs and provides insights.
-
-    4. **Add New Service** (anywhere):
-       *"Start the API server too"* → `start_process(command="npm run api")`
-
-    **Result**: Seamless collaboration between you and your AI agents, with zero manual process management.
-
-## Why persistproc?
-
-### For Developers
-- **Eliminate Context Switching**: Stop manually managing processes across different tools
-- **Reduce Friction**: Let your AI agents handle the boring stuff
-- **Improve Reliability**: No more "works on my machine" process issues
-
-### For AI Agents
-- **Better Tool Integration**: Standard MCP interface for process management
-- **Shared State**: Consistent view of running processes across all agents
-- **Rich Context**: Access to logs, status, and process history
-
-### For Teams
-- **Consistent Environments**: Same process management across all team members
-- **Better Debugging**: Centralized logs and process monitoring
-- **Simplified Onboarding**: One tool to manage all development processes
-
-## What's Next?
-
-- [**Quick Start Guide**](getting-started/quick-start.md) - Get running in 5 minutes
-- [**Agent Integration**](user-guide/agent-integration.md) - Set up your favorite AI tools
-- [**Web Development Example**](examples/web-development.md) - See it in action
-- [**API Reference**](api/mcp-tools.md) - Explore all available tools
-
----
-
-**Ready to supercharge your multi-agent development workflow?** [Get started now →](getting-started/quick-start.md)
+*   **You**: "Show me any errors from the web server."
+    *   **Agent**: Calls `get_process_output(pid=12345, stream="stderr")` to retrieve the latest error logs.
