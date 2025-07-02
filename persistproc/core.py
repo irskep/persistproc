@@ -277,7 +277,24 @@ class ProcessManager:
 
         return process_info_to_dict(p_info)
 
+    def restart_process(self, pid: int) -> Dict:
+        """Stops and restarts a process by its PID."""
+        p_info = self.get_process_status(pid)  # This also validates the PID
+        command = p_info["command"]
+        wd = p_info.get("working_directory")
+        env = p_info.get("environment")
+
+        self.stop_process(pid)
+
+        # It's possible for the process to be "running" but the OS process
+        # to be gone. In that case, start_process would fail with a duplicate
+        # command error. We add a small delay to let the monitor thread catch up.
+        time.sleep(0.1)
+
+        return self.start_process(command, wd, env)
+
     def list_processes(self) -> List[Dict]:
+        """Returns a list of all managed processes."""
         with self.lock:
             return [process_info_to_dict(p) for p in self.processes.values()]
 
@@ -287,6 +304,17 @@ class ProcessManager:
         if not p_info:
             raise ValueError(f"Process with PID {pid} not found.")
         return process_info_to_dict(p_info)
+
+    def get_log_paths(self, pid: int) -> Dict[str, str]:
+        """Gets the log file paths for a specific process."""
+        with self.lock:
+            p_info = self.processes.get(pid)
+        if not p_info:
+            raise ValueError(f"Process with PID {pid} not found.")
+
+        log_paths = self.log_manager.get_log_paths(p_info.log_prefix)
+        # convert Path objects to strings for JSON serialization
+        return {k: str(v) for k, v in log_paths.items()}
 
     def get_process_output(
         self,

@@ -89,15 +89,8 @@ def create_tools(app, process_manager):
         """Get the paths to the log files for a specific process."""
         logger.debug(f"get_process_log_paths called with pid: {pid}")
         try:
-            with process_manager.lock:
-                p_info = process_manager.processes.get(pid)
-            if not p_info:
-                raise ValueError(f"Process with PID {pid} not found.")
-
-            log_paths = process_manager.log_manager.get_log_paths(p_info.log_prefix)
-            # convert Path objects to strings for JSON serialization
-            str_log_paths = {k: str(v) for k, v in log_paths.items()}
-            return json.dumps(str_log_paths, indent=2)
+            result = process_manager.get_log_paths(pid)
+            return json.dumps(result, indent=2)
         except (ValueError, RuntimeError) as e:
             return json.dumps({"error": str(e)})
 
@@ -106,20 +99,8 @@ def create_tools(app, process_manager):
         """Stops a process and starts it again with the same parameters."""
         logger.debug(f"restart_process called with pid: {pid}")
         try:
-            # Get old process info
-            p_info_dict = process_manager.get_process_status(pid)
-
-            command = p_info_dict["command"]
-            wd = p_info_dict.get("working_directory")
-            env = p_info_dict.get("environment")
-
-            # Stop old process
-            process_manager.stop_process(pid)
-
-            # Start new process
-            new_p_info_dict = process_manager.start_process(command, wd, env)
-            return json.dumps(new_p_info_dict, indent=2)
-
+            result = process_manager.restart_process(pid)
+            return json.dumps(result, indent=2)
         except (ValueError, RuntimeError) as e:
             logger.error(f"restart_process error: {e}")
             return json.dumps({"error": str(e)})
