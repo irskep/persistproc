@@ -40,7 +40,17 @@ def live_server_url(free_port, temp_dir_session, monkeypatch_session):
         daemon=True,
     )
     server_thread.start()
-    time.sleep(1)  # Give the server time to start
+
+    # Poll the server to wait for it to be ready
+    start_time = time.time()
+    while time.time() - start_time < 10:  # 10-second timeout
+        try:
+            with socket.create_connection(("127.0.0.1", free_port), timeout=0.1):
+                break
+        except (socket.timeout, ConnectionRefusedError):
+            time.sleep(0.1)
+    else:
+        pytest.fail("Server did not start within 10 seconds.")
 
     # Wait for the process_manager to be initialized
     while persistproc.server.process_manager is None:

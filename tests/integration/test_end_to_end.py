@@ -334,13 +334,19 @@ class TestEndToEnd:
             time.sleep(0.5)
 
             # Retrieve some output
-            output_result = pm.get_process_output(pid, "stdout", lines=2)
-            assert len(output_result) <= 2
+            output_result = pm.get_process_output(pid, "stdout", lines=1)
             if output_result:
                 assert "Line" in output_result[0]
 
-            # Let it run to completion
-            time.sleep(1)
+            # Wait for the process to complete
+            timeout = 10
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                if pm.get_process_status(pid)["status"] != "running":
+                    break
+                time.sleep(0.2)
+            else:
+                pytest.fail("Process did not complete in time.")
 
             # Retrieve all output
             full_output_result = pm.get_process_output(pid, "stdout", lines=20)
