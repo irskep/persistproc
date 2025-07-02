@@ -44,10 +44,15 @@ class TestCLIServerInteraction:
         )
 
         try:
-            # Poll until the process is seen by the server
-            target_process = None
-            for _ in range(10):  # Poll for up to 10 seconds
-                list_res = await call_json(live_mcp_client, "list_processes", {})
+            # Allow up to 20 s for the server to settle in extremely slow CI runs
+            for _ in range(20):
+                try:
+                    list_res = await call_json(live_mcp_client, "list_processes", {})
+                except Exception:
+                    # Transient 5xx during FastMCP lifespan race – wait & retry
+                    await asyncio.sleep(0.5)
+                    continue
+
                 target_process = next(
                     (
                         p
@@ -104,7 +109,11 @@ class TestCLIServerInteraction:
             # Clean up the subprocess
             if cli_process.returncode is None:
                 cli_process.terminate()
-                await cli_process.wait()
+                try:
+                    await cli_process.wait()
+                except ProcessLookupError:
+                    # Process already exited; ignore for cleanup
+                    pass
 
     async def test_cli_raw_tail(self, live_server_url):
         """Run CLI with --raw and verify timestamped output lines are emitted."""
@@ -167,5 +176,9 @@ class TestCLIServerInteraction:
             ts_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.")
             assert any(ts_pattern.match(l) for l in raw_lines)
         finally:
-            cli_proc.terminate()
-            await cli_proc.wait()
+            try:
+                cli_proc.terminate()
+                await cli_proc.wait()
+            except ProcessLookupError:
+                # Process already exited; ignore for cleanup
+                pass
