@@ -1,0 +1,6 @@
+INHERIT: mkdocs.yml
+
+# Local (downloadable) build tweaks
+author: persistproc
+use_directory_urls: false
+site_name: "persistproc Documentation (local)"

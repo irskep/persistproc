@@ -43,7 +43,11 @@ jobs:
           
       - name: Build documentation
         run: |
-          mkdocs build --strict
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            mkdocs build --strict -f mkdocs-local.yml
+          else
+            mkdocs build --strict
+          fi
           
       - name: Upload Pages artifact (for main branch)
         if: github.ref == 'refs/heads/main'
