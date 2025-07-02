@@ -1,6 +1,6 @@
-# Web Development with PersistProc
+# Web Development with persistproc
 
-This guide demonstrates how PersistProc transforms web development workflows, particularly for projects involving multiple services and AI agents.
+This guide demonstrates how persistproc transforms web development workflows, particularly for projects involving multiple services and AI agents.
 
 ## The Modern Web Dev Challenge
 
@@ -12,7 +12,7 @@ Modern web applications often involve multiple processes:
 - **Build tools** (Webpack, Vite, Parcel)
 - **Testing frameworks** (Jest, Cypress, Playwright)
 
-Managing these across different AI agents and terminal sessions is exactly the problem PersistProc solves.
+Managing these across different AI agents and terminal sessions is exactly the problem persistproc solves.
 
 ## Complete Example: Full-Stack React + Node.js App
 
@@ -32,9 +32,9 @@ my-app/
 └── package.json      # Root package.json
 ```
 
-### Step 1: Start the PersistProc Server
+### Step 1: Start the persistproc Server
 
-First, start PersistProc in a dedicated terminal (keep this running):
+First, start persistproc in a dedicated terminal (keep this running):
 
 ```bash
 cd my-app
@@ -70,7 +70,7 @@ The agent will:
 
 ### Step 3: Multi-Agent Development Workflow
 
-Now the real power of PersistProc becomes apparent. Here's how different agents can collaborate:
+Now the real power of persistproc becomes apparent. Here's how different agents can collaborate:
 
 #### Frontend Work (Cursor)
 
@@ -124,7 +124,7 @@ persistproc --logs <db-pid>
 
 **Problem**: You try to start a service but get "port already in use" error.
 
-**Solution with PersistProc**:
+**Solution with persistproc**:
 
 ```bash
 # Check what's running

@@ -1,6 +1,6 @@
 # Installation
 
-PersistProc is a Python package that provides process management for multi-agent development workflows. This guide covers all installation methods and system requirements.
+persistproc is a Python package that provides process management for multi-agent development workflows. This guide covers all installation methods and system requirements.
 
 ## System Requirements
 
@@ -10,7 +10,7 @@ PersistProc is a Python package that provides process management for multi-agent
 - **Unix-like systems**
 
 !!! warning "Windows Support"
-    PersistProc is currently Unix-only. Windows support via WSL2 may work but is not officially tested.
+    persistproc is currently Unix-only. Windows support via WSL2 may work but is not officially tested.
 
 ### Python
 - **Python 3.10 or higher**
@@ -23,7 +23,7 @@ PersistProc is a Python package that provides process management for multi-agent
 
 ### Method 1: PyPI (Recommended)
 
-The simplest way to install PersistProc:
+The simplest way to install persistproc:
 
 ```bash
 pip install persistproc
@@ -41,7 +41,7 @@ python -m venv persistproc-env
 source persistproc-env/bin/activate  # Linux/macOS
 # persistproc-env\Scripts\activate    # Windows (if supported)
 
-# Install PersistProc
+# Install persistproc
 pip install persistproc
 ```
 
@@ -74,7 +74,7 @@ sudo pip install persistproc  # Not recommended
 
 ### Verify Installation
 
-Check that PersistProc is installed correctly:
+Check that persistproc is installed correctly:
 
 ```bash
 persistproc --version
@@ -99,7 +99,7 @@ persistproc echo "Installation test successful!"
 
 ### For AI Agent Development
 
-If you're building tools that integrate with PersistProc:
+If you're building tools that integrate with persistproc:
 
 ```bash
 pip install persistproc[dev]
@@ -131,12 +131,12 @@ pyenv exec pip install persistproc
 
 ## Docker Installation
 
-You can also run PersistProc in a Docker container:
+You can also run persistproc in a Docker container:
 
 ```dockerfile
 FROM python:3.11-slim
 
-# Install PersistProc
+# Install persistproc
 RUN pip install persistproc
 
 # Expose the default port

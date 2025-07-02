@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get PersistProc running in your development environment in just a few minutes.
+Get persistproc running in your development environment in just a few minutes.
 
 ## Prerequisites
 
@@ -10,23 +10,23 @@ Get PersistProc running in your development environment in just a few minutes.
 
 ## Step 1: Installation
 
-Install PersistProc from PyPI:
+Install persistproc from PyPI:
 
 ```bash
 pip install persistproc
 ```
 
 !!! tip "Virtual Environment Recommended"
-    For best results, install PersistProc in a virtual environment:
+    For best results, install persistproc in a virtual environment:
     ```bash
     python -m venv persistproc-env
     source persistproc-env/bin/activate  # On Windows: persistproc-env\Scripts\activate
     pip install persistproc
     ```
 
-## Step 2: Start the PersistProc Server
+## Step 2: Start the persistproc Server
 
-The PersistProc server is the central hub that manages all your processes. Start it in a dedicated terminal:
+The persistproc server is the central hub that manages all your processes. Start it in a dedicated terminal:
 
 ```bash
 persistproc --serve
@@ -35,17 +35,17 @@ persistproc --serve
 You should see output similar to:
 
 ```
-2024-01-15 10:30:45 - INFO - Starting PersistProc server on http://127.0.0.1:8947
+2024-01-15 10:30:45 - INFO - Starting persistproc server on http://127.0.0.1:8947
 2024-01-15 10:30:45 - INFO - MCP endpoint available at http://127.0.0.1:8947/mcp/
 2024-01-15 10:30:45 - INFO - Server ready for connections
 ```
 
 !!! success "Server Running"
-    Keep this terminal open! The PersistProc server needs to stay running to manage your processes.
+    Keep this terminal open! The persistproc server needs to stay running to manage your processes.
 
 ## Step 3: Configure Your AI Agent
 
-Now you need to tell your AI agent how to connect to PersistProc.
+Now you need to tell your AI agent how to connect to persistproc.
 
 === "Cursor/VS Code"
 
@@ -67,7 +67,7 @@ Now you need to tell your AI agent how to connect to PersistProc.
 
 === "Claude Code"
 
-    With the PersistProc server running, add it to Claude Code:
+    With the persistproc server running, add it to Claude Code:
 
     ```bash
     claude mcp add --transport http persistproc http://127.0.0.1:8947/mcp/
@@ -93,7 +93,7 @@ Let's verify everything is working by testing the basic functionality.
 
 Ask your AI assistant:
 
-> "List all running processes using PersistProc"
+> "List all running processes using persistproc"
 
 The agent should use the `list_processes` tool and return something like:
 
@@ -150,7 +150,7 @@ You should see your process listed with its PID, status, and command.
 
 ## What's Next?
 
-🎉 **Congratulations!** You now have PersistProc running and managing your development processes.
+🎉 **Congratulations!** You now have persistproc running and managing your development processes.
 
 ### Explore Key Features
 
@@ -160,14 +160,14 @@ You should see your process listed with its PID, status, and command.
 
 ### Learn More
 
-- [Core Concepts](../user-guide/core-concepts.md) - Understand how PersistProc works
+- [Core Concepts](../user-guide/core-concepts.md) - Understand how persistproc works
 - [Agent Integration](../user-guide/agent-integration.md) - Advanced AI agent configuration
 - [Web Development Example](../examples/web-development.md) - Real-world usage patterns
 
 ### Common Next Steps
 
 1. **Set up your main development server**: `persistproc npm run dev`
-2. **Configure additional agents**: Set up PersistProc in all your development tools
+2. **Configure additional agents**: Set up persistproc in all your development tools
 3. **Explore workflows**: Try the [multi-agent workflows](../user-guide/workflows.md)
 
 ---

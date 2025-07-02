@@ -22,7 +22,7 @@ persistproc [GLOBAL_OPTIONS] [COMMAND] [COMMAND_OPTIONS] [ARGS...]
 
 ### --serve
 
-Start the PersistProc server daemon.
+Start the persistproc server daemon.
 
 ```bash
 persistproc --serve [OPTIONS]
@@ -67,7 +67,7 @@ export PERSISTPROC_DATA_DIR=/custom/path
 
 ### --stop-server
 
-Stop the running PersistProc server.
+Stop the running persistproc server.
 
 ```bash
 persistproc --stop-server [OPTIONS]
@@ -94,7 +94,7 @@ persistproc --stop-server --force
 
 ### Default Behavior (Start and Tail)
 
-When you provide a command without explicit flags, PersistProc will:
+When you provide a command without explicit flags, persistproc will:
 1. Start the process if it's not already running
 2. Tail the logs in real-time
 

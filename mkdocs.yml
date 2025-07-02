@@ -1,4 +1,4 @@
-site_name: PersistProc Documentation
+site_name: persistproc Documentation
 site_description: A shared process layer for the modern, multi-agent development workflow
 site_url: https://persistproc.readthedocs.io/
 repo_url: https://github.com/irskep/persistproc-mcp

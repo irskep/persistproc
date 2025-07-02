@@ -1,10 +1,10 @@
 # Core Concepts
 
-Understanding how PersistProc works will help you use it more effectively and troubleshoot issues when they arise.
+Understanding how persistproc works will help you use it more effectively and troubleshoot issues when they arise.
 
 ## Architecture Overview
 
-PersistProc uses a client-server architecture with a central process manager:
+persistproc uses a client-server architecture with a central process manager:
 
 ```mermaid
 graph TB
@@ -16,7 +16,7 @@ graph TB
     end
     
     subgraph "Server Layer"
-        Server[PersistProc Server]
+        Server[persistproc Server]
         MCP[MCP Interface]
         API[HTTP API]
     end
@@ -48,7 +48,7 @@ graph TB
 
 ## Key Components
 
-### 1. PersistProc Server
+### 1. persistproc Server
 
 The central daemon that manages all processes:
 

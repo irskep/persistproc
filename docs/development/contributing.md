@@ -1,6 +1,6 @@
-# Contributing to PersistProc
+# Contributing to persistproc
 
-Thank you for your interest in contributing to PersistProc! This guide will help you get started.
+Thank you for your interest in contributing to persistproc! This guide will help you get started.
 
 ## Development Setup
 

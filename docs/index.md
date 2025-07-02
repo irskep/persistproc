@@ -1,4 +1,4 @@
-# PersistProc
+# persistproc
 
 ## A shared process layer for the modern, multi-agent development workflow
 
@@ -12,7 +12,7 @@
 
 In the modern development landscape, you're likely using multiple AI agents and tools simultaneously. This creates a frustrating problem: **process isolation**.
 
-=== "Before PersistProc"
+=== "Before persistproc"
 
     ```mermaid
     graph TD
@@ -30,7 +30,7 @@ In the modern development landscape, you're likely using multiple AI agents and 
     - Manual restarts breaking your development flow
     - No visibility into running processes across tools
 
-=== "After PersistProc"
+=== "After persistproc"
 
     ```mermaid
     graph TD
@@ -40,7 +40,7 @@ In the modern development landscape, you're likely using multiple AI agents and 
             C[Claude Code];
         end
 
-        subgraph "The PersistProc Hub"
+        subgraph "The persistproc Hub"
             Hub(persistproc server);
             P1[Webpack Dev Server];
             P2[API Server];
@@ -83,7 +83,7 @@ Access via CLI, MCP tools, or HTTP API. Your processes are available however you
 
 Get up and running in 3 steps:
 
-### 1. Install PersistProc
+### 1. Install persistproc
 
 ```bash
 pip install persistproc
@@ -120,7 +120,7 @@ That's it! Now your AI agents can manage development processes collaboratively.
 
 ## Real-World Workflow Example
 
-Here's how PersistProc transforms a typical web development session:
+Here's how persistproc transforms a typical web development session:
 
 !!! example "Multi-Agent Web Development"
 
@@ -147,7 +147,7 @@ Here's how PersistProc transforms a typical web development session:
 
     **Result**: Seamless collaboration between you and your AI agents, with zero manual process management.
 
-## Why PersistProc?
+## Why persistproc?
 
 ### For Developers
 - **Eliminate Context Switching**: Stop manually managing processes across different tools
