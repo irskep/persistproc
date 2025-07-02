@@ -1,0 +1,98 @@
+site_name: PersistProc Documentation
+site_description: A shared process layer for the modern, multi-agent development workflow
+site_url: https://persistproc.readthedocs.io/
+repo_url: https://github.com/irskep/persistproc-mcp
+repo_name: irskep/persistproc-mcp
+
+theme:
+  name: material
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - attr_list
+  - md_in_html
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: sphinx
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: getting-started/quick-start.md
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+  - User Guide:
+    - Core Concepts: user-guide/core-concepts.md
+    - Agent Integration: user-guide/agent-integration.md
+    - Process Management: user-guide/process-management.md
+    - Workflows & Examples: user-guide/workflows.md
+    - Troubleshooting: user-guide/troubleshooting.md
+  - API Reference:
+    - MCP Tools: api/mcp-tools.md
+    - CLI Reference: api/cli.md
+    - Python API: api/python-api.md
+  - Development:
+    - Contributing: development/contributing.md
+    - Development Setup: development/setup.md
+    - Architecture: development/architecture.md
+  - Examples:
+    - Web Development: examples/web-development.md
+    - Multi-Service Projects: examples/multi-service.md
+    - Custom Workflows: examples/custom-workflows.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/irskep/persistproc-mcp
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/persistproc/
+  version:
+    provider: mike
