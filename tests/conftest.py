@@ -64,8 +64,14 @@ def live_server_url(free_port, temp_dir_session, monkeypatch_session):
     # its lifespan startup. Attempt a lightweight MCP request via the async client until
     # it succeeds to avoid race-conditions that manifest as intermittent 500 responses.
 
-    async def _probe_until_ready(url: str, retries: int = 20):
-        """Attempt to connect to the MCP endpoint until it responds without 5xx."""
+    async def _probe_until_ready(url: str, retries: int = 80):
+        """Attempt to connect to the MCP endpoint until it responds without 5xx.
+
+        The default startup time of uvicorn + FastMCP on slower CI runners can
+        occasionally exceed the previous 5-second window. Increasing retries
+        makes the probe far more reliable across Python versions and hardware
+        classes.
+        """
         for _ in range(retries):
             try:
                 async with Client(f"{url}/mcp/") as probe_client:
@@ -75,7 +81,10 @@ def live_server_url(free_port, temp_dir_session, monkeypatch_session):
             except Exception:
                 # Server not ready yet – wait a bit and retry.
                 await anyio.sleep(0.25)
-        # If we exhaust retries, let the original tests surface the failure.
+        # If we exhaust retries, raise so the fixture fails fast with a clearer message.
+        raise RuntimeError(
+            "PersistProc test server failed to start within the allotted time."
+        )
 
     anyio.run(_probe_until_ready, f"http://127.0.0.1:{free_port}")
 
