@@ -142,6 +142,28 @@ class ProcessManager:
                             )
             time.sleep(POLL_INTERVAL)
 
+    def _create_subprocess(
+        self,
+        command: str,
+        working_directory: Optional[str],
+        environment: Optional[Dict[str, str]],
+    ) -> subprocess.Popen:
+        """Creates and returns a new subprocess."""
+        try:
+            return subprocess.Popen(
+                shlex.split(command),
+                cwd=working_directory,
+                env={**os.environ, **(environment or {})},
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                close_fds=True,
+                preexec_fn=os.setsid,
+            )
+        except FileNotFoundError as e:
+            raise ValueError(f"Command not found: {e.filename}") from e
+        except Exception as e:
+            raise RuntimeError(f"Failed to start process: {e}") from e
+
     def start_process(
         self,
         command: str,
@@ -158,20 +180,7 @@ class ProcessManager:
         if working_directory and not Path(working_directory).is_dir():
             raise ValueError(f"Working directory '{working_directory}' does not exist.")
 
-        try:
-            proc = subprocess.Popen(
-                shlex.split(command),
-                cwd=working_directory,
-                env={**os.environ, **(environment or {})},
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                close_fds=True,
-                preexec_fn=os.setsid,
-            )
-        except FileNotFoundError as e:
-            raise ValueError(f"Command not found: {e.filename}") from e
-        except Exception as e:
-            raise RuntimeError(f"Failed to start process: {e}") from e
+        proc = self._create_subprocess(command, working_directory, environment)
 
         escaped_cmd = escape_command(command)
         log_prefix = f"{proc.pid}.{escaped_cmd}"
@@ -200,6 +209,46 @@ class ProcessManager:
         self._log_event(p_info, f"Process started with command: {command}")
         return process_info_to_dict(p_info)
 
+    def _perform_graceful_shutdown(
+        self, p_info: ProcessInfo, force: bool, timeout: Optional[float]
+    ):
+        """Handles the graceful shutdown sequence with optional force kill."""
+        pid = p_info.pid
+        try:
+            graceful_sig = signal.SIGKILL if force else signal.SIGTERM
+            self._send_signal(pid, graceful_sig)
+            self._log_event(
+                p_info, f"Sent signal {graceful_sig.name} to process group {pid}."
+            )
+        except ProcessLookupError:
+            self._log_event(p_info, "Process was already gone when stop was requested.")
+            with self.lock:
+                p_info.status = "terminated"
+            return
+        except Exception as e:
+            raise RuntimeError(f"Failed to send signal to process {pid}: {e}")
+
+        # Wait for graceful exit. Use custom timeout if provided.
+        graceful_timeout = 8 if timeout is None else timeout
+
+        if not self._wait_for_exit(p_info.proc, timeout=graceful_timeout):
+            if force:
+                self._log_event(p_info, "Process did not exit after SIGKILL timeout.")
+            else:
+                # Escalate to SIGKILL
+                self._log_event(
+                    p_info, f"Escalated to SIGKILL for process group {pid}."
+                )
+                try:
+                    self._send_signal(pid, signal.SIGKILL)
+                    if not self._wait_for_exit(p_info.proc, timeout=2):
+                        self._log_event(
+                            p_info,
+                            "Timed-out waiting for process to exit after SIGKILL.",
+                        )
+                except ProcessLookupError:
+                    pass  # Gone in between
+
     def stop_process(
         self, pid: int, force: bool = False, timeout: Optional[float] = None
     ) -> Dict:
@@ -217,45 +266,9 @@ class ProcessManager:
             )
             return process_info_to_dict(p_info)
 
-        # 1. Send graceful signal
-        try:
-            graceful_sig = signal.SIGKILL if force else signal.SIGTERM
-            self._send_signal(pid, graceful_sig)
-            self._log_event(
-                p_info, f"Sent signal {graceful_sig.name} to process group {pid}."
-            )
-        except ProcessLookupError:
-            self._log_event(p_info, "Process was already gone when stop was requested.")
-            with self.lock:
-                p_info.status = "terminated"
-            return process_info_to_dict(p_info)
-        except Exception as e:
-            raise RuntimeError(f"Failed to send signal to process {pid}: {e}")
+        self._perform_graceful_shutdown(p_info, force, timeout)
 
-        # 2. Wait for graceful exit. Use custom timeout if provided.
-        graceful_timeout = 8 if timeout is None else timeout
-
-        if not self._wait_for_exit(p_info.proc, timeout=graceful_timeout):
-            if force:
-                # Already used SIGKILL, nothing more to do
-                self._log_event(p_info, "Process did not exit after SIGKILL timeout.")
-            else:
-                # Escalate to SIGKILL
-                try:
-                    self._send_signal(pid, signal.SIGKILL)
-                    self._log_event(
-                        p_info, f"Escalated to SIGKILL for process group {pid}."
-                    )
-                except ProcessLookupError:
-                    pass  # Gone in between
-                # Wait a short time
-                if not self._wait_for_exit(p_info.proc, timeout=2):
-                    self._log_event(
-                        p_info, "Timed-out waiting for process to exit after SIGKILL."
-                    )
-                    return {"error": "timeout", **process_info_to_dict(p_info)}
-
-        # Clean up proc reference
+        # Clean up proc reference and update status
         with self.lock:
             p_info.proc = None
             p_info.status = (
