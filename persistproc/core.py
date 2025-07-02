@@ -21,6 +21,8 @@ from .utils import get_iso_timestamp, escape_command
 
 logger = logging.getLogger("persistproc")
 
+POLL_INTERVAL = float(os.environ.get("PERSISTPROC_TEST_POLL_INTERVAL", "1.0"))
+
 
 @dataclass
 class ProcessInfo:
@@ -138,7 +140,7 @@ class ProcessManager:
                             self._log_event(
                                 p_info, f"Process exited with code {exit_code}."
                             )
-            time.sleep(1)
+            time.sleep(POLL_INTERVAL)
 
     def start_process(
         self,
@@ -198,7 +200,9 @@ class ProcessManager:
         self._log_event(p_info, f"Process started with command: {command}")
         return process_info_to_dict(p_info)
 
-    def stop_process(self, pid: int, force: bool = False) -> Dict:
+    def stop_process(
+        self, pid: int, force: bool = False, timeout: Optional[float] = None
+    ) -> Dict:
         with self.lock:
             p_info = self.processes.get(pid)
 
@@ -228,8 +232,10 @@ class ProcessManager:
         except Exception as e:
             raise RuntimeError(f"Failed to send signal to process {pid}: {e}")
 
-        # 2. Wait for graceful exit
-        if not self._wait_for_exit(p_info.proc, timeout=8):
+        # 2. Wait for graceful exit. Use custom timeout if provided.
+        graceful_timeout = 8 if timeout is None else timeout
+
+        if not self._wait_for_exit(p_info.proc, timeout=graceful_timeout):
             if force:
                 # Already used SIGKILL, nothing more to do
                 self._log_event(p_info, "Process did not exit after SIGKILL timeout.")

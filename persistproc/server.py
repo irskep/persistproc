@@ -9,6 +9,7 @@ import logging
 import os
 import signal
 import sys
+from typing import Optional
 
 # Check for Unix-like system
 if os.name != "posix":
@@ -24,19 +25,29 @@ from .core import ProcessManager
 from .tools import create_tools
 from .utils import get_app_data_dir
 
+# This global variable will hold the single ProcessManager instance.
+process_manager: Optional[ProcessManager] = None
+
 logger = logging.getLogger("persistproc")
 
-# Global process manager instance
-process_manager = None
 
+def create_app(pm: Optional[ProcessManager] = None) -> FastMCP:
+    """Create and configure the FastMCP application."""
+    global process_manager
+    if pm:
+        process_manager = pm
+    elif process_manager is None:
+        APP_DATA_DIR = get_app_data_dir("persistproc")
+        LOG_DIRECTORY = APP_DATA_DIR / "logs"
+        LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
+        process_manager = ProcessManager(log_directory=LOG_DIRECTORY)
 
-def create_app():
-    """Create and configure the FastMCP app with tools."""
-    app = FastMCP("persistproc")
-
-    # Register all tools
+    app = FastMCP(
+        "PersistProc",
+        "A shared process layer for multi-agent development workflows.",
+    )
+    app.process_manager = process_manager
     create_tools(app, process_manager)
-
     return app
 
 

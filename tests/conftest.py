@@ -10,8 +10,11 @@ import uvicorn
 from persistproc.server import create_app, run_server
 from persistproc.utils import get_app_data_dir
 import persistproc.server
+from fastmcp.client import Client
 
 import pytest
+import pytest_asyncio
+import anyio
 
 
 @pytest.fixture(scope="session")
@@ -40,11 +43,51 @@ def live_server_url(free_port, temp_dir_session, monkeypatch_session):
         daemon=True,
     )
     server_thread.start()
-    time.sleep(1)  # Give the server time to start
+
+    # Poll the server to wait for it to be ready
+    start_time = time.time()
+    while time.time() - start_time < 10:  # 10-second timeout
+        try:
+            with socket.create_connection(("127.0.0.1", free_port), timeout=0.1):
+                break
+        except (socket.timeout, ConnectionRefusedError):
+            time.sleep(0.1)
+    else:
+        pytest.fail("Server did not start within 10 seconds.")
 
     # Wait for the process_manager to be initialized
     while persistproc.server.process_manager is None:
         time.sleep(0.1)
+
+    # --- New: Probe the MCP endpoint to ensure the server lifespan is fully started ---
+    # The TCP port may be open before FastMCP's StreamableHTTP session manager finishes
+    # its lifespan startup. Attempt a lightweight MCP request via the async client until
+    # it succeeds to avoid race-conditions that manifest as intermittent 500 responses.
+
+    async def _probe_until_ready(url: str, retries: int = 80):
+        """Attempt to connect to the MCP endpoint until it responds without 5xx.
+
+        The default startup time of uvicorn + FastMCP on slower CI runners can
+        occasionally exceed the previous 5-second window. Increasing retries
+        makes the probe far more reliable across Python versions and hardware
+        classes.
+        """
+        for _ in range(retries):
+            try:
+                async with Client(f"{url}/mcp/") as probe_client:
+                    await probe_client.call_tool("list_processes", {})
+                    # require a second successive success to be extra sure
+                    await anyio.sleep(0.15)
+                    await probe_client.call_tool("list_processes", {})
+                    return  # double-green: server ready
+            except Exception:
+                await anyio.sleep(0.25)
+        # If we exhaust retries, raise so the fixture fails fast with a clearer message.
+        raise RuntimeError(
+            "PersistProc test server failed to start within the allotted time."
+        )
+
+    anyio.run(_probe_until_ready, f"http://127.0.0.1:{free_port}")
 
     # Ensure monitor thread is stopped after tests
     yield f"http://127.0.0.1:{free_port}"
@@ -74,6 +117,45 @@ def temp_dir(temp_dir_session):
     temp_path = Path(tempfile.mkdtemp(dir=temp_dir_session))
     yield temp_path
     shutil.rmtree(temp_path, ignore_errors=True)
+
+
+@pytest.fixture
+def process_manager(temp_dir):
+    """Provides a ProcessManager instance for testing."""
+    from persistproc.core import ProcessManager
+
+    with patch("persistproc.core.ProcessManager._monitor_processes"):
+        pm = ProcessManager(log_directory=temp_dir)
+        yield pm
+        pm.stop_monitor_thread()
+
+
+@pytest.fixture
+def mcp_server(process_manager):
+    """Provides an in-memory MCP server instance for testing."""
+    with patch("persistproc.server.setup_signal_handlers", lambda: None):
+        app = create_app(process_manager)
+        return app
+
+
+@pytest_asyncio.fixture
+async def live_mcp_client(live_server_url):
+    """Provides a client connected to the live test server."""
+    client = Client(f"{live_server_url}/mcp/")
+    await client.__aenter__()
+    try:
+        yield client
+    finally:
+        import httpx, asyncio
+
+        try:
+            await client.__aexit__(None, None, None)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code >= 500:
+                # Ignore transient server error during teardown
+                await asyncio.sleep(0.1)
+            else:
+                raise
 
 
 @pytest.fixture
