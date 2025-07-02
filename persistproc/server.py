@@ -26,22 +26,12 @@ from .tools import create_tools
 from .utils import get_app_data_dir
 
 # This global variable will hold the single ProcessManager instance.
-process_manager: Optional[ProcessManager] = None
 
 logger = logging.getLogger("persistproc")
 
 
-def create_app(pm: Optional[ProcessManager] = None) -> FastMCP:
+def create_app(process_manager: ProcessManager) -> FastMCP:
     """Create and configure the FastMCP application."""
-    global process_manager
-    if pm:
-        process_manager = pm
-    elif process_manager is None:
-        APP_DATA_DIR = get_app_data_dir("persistproc")
-        LOG_DIRECTORY = APP_DATA_DIR / "logs"
-        LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
-        process_manager = ProcessManager(log_directory=LOG_DIRECTORY)
-
     app = FastMCP(
         "PersistProc",
         "A shared process layer for multi-agent development workflows.",
@@ -51,7 +41,7 @@ def create_app(pm: Optional[ProcessManager] = None) -> FastMCP:
     return app
 
 
-def setup_signal_handlers():
+def setup_signal_handlers(process_manager: ProcessManager):
     """Setup signal handlers for graceful shutdown."""
 
     def signal_handler(signum, frame):
@@ -70,10 +60,13 @@ def setup_signal_handlers():
     signal.signal(signal.SIGTERM, signal_handler)
 
 
-def run_server(host: str = "127.0.0.1", port: int = 8947, verbose: bool = False):
+def run_server(
+    host: str = "127.0.0.1",
+    port: int = 8947,
+    verbose: bool = False,
+    state_callback: dict = None,
+):
     """Run the MCP server."""
-    global process_manager
-
     from .utils import setup_logging
 
     setup_logging(verbose)
@@ -90,11 +83,14 @@ def run_server(host: str = "127.0.0.1", port: int = 8947, verbose: bool = False)
     logger.debug(f"Initializing ProcessManager with log_directory={LOG_DIRECTORY}")
     process_manager = ProcessManager(LOG_DIRECTORY)
 
+    if state_callback is not None:
+        state_callback["process_manager"] = process_manager
+
     logger.debug("Creating FastMCP app")
-    app = create_app()
+    app = create_app(process_manager)
 
     logger.debug("Setting up signal handlers")
-    setup_signal_handlers()
+    setup_signal_handlers(process_manager)
 
     logger.info(f"Starting PersistProc MCP Server on {host}:{port}")
     app.run(transport="http", host=host, port=port, path="/mcp/")

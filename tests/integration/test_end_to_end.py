@@ -180,10 +180,9 @@ class TestEndToEnd:
 
         pid = None
         try:
-            with patch.object(server, "process_manager", pm, create=True):
-                app = server.create_app()
-                # App creation should succeed
-                assert app is not None
+            app = server.create_app(pm)
+            # App creation should succeed
+            assert app is not None
 
             # Test MCP tool functions directly (since FastMCP doesn't allow introspection)
             def start_process_tool(

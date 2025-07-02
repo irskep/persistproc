@@ -43,9 +43,6 @@ def test_signal_handler_graceful_shutdown(pm_no_monitor, monkeypatch):
             log_prefix=f"{pid}.sleep_5",
         )
 
-    # Replace server's global process_manager
-    pp_server.process_manager = pm_no_monitor
-
     # Track stop_process calls
     pm_no_monitor.stop_process = MagicMock(return_value={})
 
@@ -68,7 +65,7 @@ def test_signal_handler_graceful_shutdown(pm_no_monitor, monkeypatch):
     monkeypatch.setattr(sys, "exit", _fake_exit, raising=True)
 
     # Register handlers (captured by our patched signal.signal)
-    pp_server.setup_signal_handlers()
+    pp_server.setup_signal_handlers(pm_no_monitor)
 
     handler = captured.get(signal.SIGINT)
     assert handler is not None, "SIGINT handler was not registered"

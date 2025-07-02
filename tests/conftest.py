@@ -34,12 +34,17 @@ def live_server_url(free_port, temp_dir_session, monkeypatch_session):
     )
     # Prevent signal handlers from being set up in the test thread
     monkeypatch_session.setattr(
-        "persistproc.server.setup_signal_handlers", lambda: None
+        "persistproc.server.setup_signal_handlers", lambda pm: None
     )
 
+    server_state = {}
     server_thread = threading.Thread(
         target=run_server,
-        kwargs={"host": "127.0.0.1", "port": free_port},
+        kwargs={
+            "host": "127.0.0.1",
+            "port": free_port,
+            "state_callback": server_state,
+        },
         daemon=True,
     )
     server_thread.start()
@@ -56,7 +61,7 @@ def live_server_url(free_port, temp_dir_session, monkeypatch_session):
         pytest.fail("Server did not start within 10 seconds.")
 
     # Wait for the process_manager to be initialized
-    while persistproc.server.process_manager is None:
+    while "process_manager" not in server_state:
         time.sleep(0.1)
 
     # --- New: Probe the MCP endpoint to ensure the server lifespan is fully started ---
@@ -91,7 +96,7 @@ def live_server_url(free_port, temp_dir_session, monkeypatch_session):
 
     # Ensure monitor thread is stopped after tests
     yield f"http://127.0.0.1:{free_port}"
-    persistproc.server.process_manager.stop_monitor_thread()
+    server_state["process_manager"].stop_monitor_thread()
 
 
 @pytest.fixture(scope="session")
