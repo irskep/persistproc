@@ -503,4 +503,4 @@ def monitor_health(client):
 
 ---
 
-**Next**: Check out the [CLI Reference](cli.md) for command-line usage or [Python API](python-api.md) for programmatic access.
+**Next**: Check out the [CLI Reference](cli.md) for command-line usage and examples.

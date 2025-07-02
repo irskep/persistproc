@@ -453,4 +453,4 @@ def diagnose_performance(client):
 
 ---
 
-**Next**: Explore [Multi-Service Projects](multi-service.md) for more complex deployment scenarios.
+**Next**: Check out the [Workflows & Examples](../user-guide/workflows.md) for more usage patterns.

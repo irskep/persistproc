@@ -467,4 +467,4 @@ ls -la ~/.local/share/persistproc/
 
 ---
 
-**Next**: Learn about [Process Management](process-management.md) to understand advanced process control features.
+**Next**: Explore [Workflows & Examples](workflows.md) to see PersistProc in action with real scenarios.

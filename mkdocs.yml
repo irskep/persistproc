@@ -52,8 +52,8 @@ markdown_extensions:
   - attr_list
   - md_in_html
   - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 plugins:
   - search
@@ -72,21 +72,15 @@ nav:
   - User Guide:
     - Core Concepts: user-guide/core-concepts.md
     - Agent Integration: user-guide/agent-integration.md
-    - Process Management: user-guide/process-management.md
     - Workflows & Examples: user-guide/workflows.md
     - Troubleshooting: user-guide/troubleshooting.md
   - API Reference:
     - MCP Tools: api/mcp-tools.md
     - CLI Reference: api/cli.md
-    - Python API: api/python-api.md
   - Development:
     - Contributing: development/contributing.md
-    - Development Setup: development/setup.md
-    - Architecture: development/architecture.md
   - Examples:
     - Web Development: examples/web-development.md
-    - Multi-Service Projects: examples/multi-service.md
-    - Custom Workflows: examples/custom-workflows.md
 
 extra:
   social:

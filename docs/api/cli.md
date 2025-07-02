@@ -568,4 +568,4 @@ persistproc --logs --since 1d --format json > today-logs.json
 
 ---
 
-**Next**: Explore the [Python API](python-api.md) for programmatic access to PersistProc functionality.
+**Next**: Check out the [MCP Tools Reference](mcp-tools.md) for details on AI agent integration.
