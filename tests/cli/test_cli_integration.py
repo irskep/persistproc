@@ -19,6 +19,7 @@ async def _launch_cli(host: str, port: str, *extra_args: str):
         host,
         "--port",
         port,
+        "-v",
         *extra_args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
