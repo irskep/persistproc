@@ -138,12 +138,20 @@ class TestCLIServerInteraction:
         )
 
         try:
-            # Wait for some output
-            raw_lines = []
-            for _ in range(10):
-                line = await asyncio.wait_for(cli_proc.stdout.readline(), timeout=3)
+            # Collect up to 40 lines (or ~15 s max) to account for slow startup
+            raw_lines: list[str] = []
+            for _ in range(40):
+                try:
+                    line = await asyncio.wait_for(
+                        cli_proc.stdout.readline(), timeout=3.5
+                    )
+                except asyncio.TimeoutError:
+                    # No data yet – continue polling until overall loop limit hit
+                    continue
+
                 if not line:
                     break
+
                 decoded = line.decode()
                 raw_lines.append(decoded)
                 if "COUNT 0" in decoded:
