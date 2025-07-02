@@ -220,9 +220,7 @@ async def tail_and_monitor_process_async(
     try:
         loop.add_signal_handler(signal.SIGINT, _handle_sigint)
     except NotImplementedError:
-        # This will be raised on systems that don't support add_signal_handler (e.g., Windows)
-        # We can ignore it for this project as it's Unix-only.
-        pass
+        pass  # Not supported on all platforms (e.g. Windows)
 
     current_pid = initial_pid
     current_log_path = initial_log_path
@@ -231,7 +229,7 @@ async def tail_and_monitor_process_async(
     )
 
     # This is the main loop that allows us to follow a process through restarts.
-    while True:
+    while not shutdown_event.is_set():
         # Wait for the log file to appear, which can take a moment after a restart.
         wait_for_log_start = time.monotonic()
         while not current_log_path.exists():
@@ -261,38 +259,16 @@ async def tail_and_monitor_process_async(
                 file=sys.stderr,
             )
 
-        def is_process_alive():
-            """Synchronous helper to check process status from the thread."""
-            try:
-                # This is a blocking call from a worker thread to the main event loop
-                future = asyncio.run_coroutine_threadsafe(
-                    client.call_tool("get_process_status", {"pid": current_pid}), loop
-                )
-                status_result = future.result(timeout=2.0)
-                p_status = json.loads(status_result[0].text)
-                return "error" not in p_status and p_status.get("status") in (
-                    "running",
-                    "starting",
-                )
-            except Exception:
-                return False
+        stop_tail_event = threading.Event()
 
         def tail_worker(raw_log: bool):
             """The actual tailing logic that runs in a thread."""
-            nonlocal last_known_start_time
             try:
-                log_file.seek(0, 2)  # Seek to the end to only show new lines
-                while not shutdown_event.is_set():
-                    try:
-                        line = log_file.readline()
-                    except ValueError:
-                        # This happens when the main thread closes the file
-                        # to unblock us during shutdown.
-                        break
-
+                log_file.seek(0, 2)
+                while not stop_tail_event.is_set():
+                    line = log_file.readline()
                     if not line:
-                        # Check if process is still alive before sleeping
-                        if shutdown_event.is_set() or not is_process_alive():
+                        if stop_tail_event.is_set():
                             break
                         time.sleep(0.1)
                         continue
@@ -305,7 +281,6 @@ async def tail_and_monitor_process_async(
                     if output_line is not None:
                         sys.stdout.write(output_line)
                         sys.stdout.flush()
-
             finally:
                 if not log_file.closed:
                     log_file.close()
@@ -316,92 +291,87 @@ async def tail_and_monitor_process_async(
         )
         tail_thread.start()
 
-        # Monitor the thread's liveness and the shutdown event
-        while tail_thread.is_alive():
-            if shutdown_event.is_set():
-                break
-            await asyncio.sleep(0.2)
+        process_truly_exited = False
+        restarted_proc = None
 
-        # If we are shutting down, unblock the thread by closing its file.
-        if shutdown_event.is_set():
-            if log_file and not log_file.closed:
-                log_file.close()
-
-        # Wait for the tailing thread to finish its cleanup
-        tail_thread.join(timeout=1.0)
-
-        # If the event was set, we are done, so exit the restart loop.
-        if shutdown_event.is_set():
-            logger.debug("Shutdown event received, deciding action.")
-            should_stop = False
-            if args.on_exit == "stop":
-                should_stop = True
-            elif args.on_exit == "detach":
-                should_stop = False
-            elif sys.stdin.isatty():
+        # Main monitoring loop
+        try:
+            while tail_thread.is_alive() and not shutdown_event.is_set():
                 try:
-                    stop_choice = input(
-                        f"Stop running process '{command_str}' (PID {current_pid})? [y/N] "
+                    status_result = await client.call_tool(
+                        "get_process_status", {"pid": current_pid}
                     )
-                    if stop_choice.lower() == "y":
-                        should_stop = True
-                except (EOFError, KeyboardInterrupt):
-                    print()  # Print a newline to make output cleaner
-                    should_stop = False
+                    p_status = json.loads(status_result[0].text)
+                    if "error" in p_status or p_status.get("status") not in (
+                        "running",
+                        "starting",
+                    ):
+                        process_truly_exited = True
+                        break  # Exit monitoring loop, process is gone.
+                except Exception:
+                    logger.warning("Could not get process status. Assuming it exited.")
+                    process_truly_exited = True
+                    break
+                await asyncio.sleep(1.0)  # Polling interval
 
-            if should_stop:
-                print(f"--- Stopping process {current_pid}... ---", file=sys.stderr)
-                try:
-                    await client.call_tool("stop_process", {"pid": current_pid})
-                except Exception as e:
-                    logger.error(f"Failed to stop process {current_pid}: {e}")
-            else:
-                print(
-                    "\n--- Detaching from log tailing. Process remains running. ---",
-                    file=sys.stderr,
-                )
-            break
-
-        # Check if the process is still alive. If not, see if it was restarted.
-        try:
-            status_result = await client.call_tool(
-                "get_process_status", {"pid": current_pid}
-            )
-            p_status = json.loads(status_result[0].text)
-            if "error" not in p_status and p_status.get("status") in (
-                "running",
-                "starting",
-            ):
-                # Process is still alive but tailer exited. This shouldn't happen.
-                logger.warning("Tailing ended but process is still running. Detaching.")
+            if shutdown_event.is_set():
+                # User-initiated shutdown
                 break
-        except Exception:
-            # Cannot get status, assume it's gone.
-            pass
 
-        # Process is not running. Check if it was restarted.
-        try:
-            list_res = await client.call_tool("list_processes", {})
-            all_procs = json.loads(list_res[0].text)
-            restarted_proc = find_restarted_process(
-                all_procs, command_str, last_known_start_time
-            )
-
-            if restarted_proc:
-                current_pid = restarted_proc["pid"]
-                last_known_start_time = restarted_proc["start_time"]
-                logs_result = await client.call_tool(
-                    "get_process_log_paths", {"pid": current_pid}
+            if process_truly_exited:
+                list_res = await client.call_tool("list_processes", {})
+                all_procs = json.loads(list_res[0].text)
+                restarted_proc = find_restarted_process(
+                    all_procs, command_str, last_known_start_time
                 )
-                log_paths = json.loads(logs_result[0].text)
-                current_log_path = Path(log_paths["combined"])
-                continue  # Loop to start tailing the new process
-            else:
-                logger.info("Process has exited and was not restarted.")
-                break  # Exit the while loop
-        except Exception as e:
-            logger.error(f"Failed to check for restarted process: {e}")
-            break
+
+                if restarted_proc:
+                    current_pid = restarted_proc["pid"]
+                    last_known_start_time = restarted_proc["start_time"]
+                    logs_result = await client.call_tool(
+                        "get_process_log_paths", {"pid": current_pid}
+                    )
+                    log_paths = json.loads(logs_result[0].text)
+                    current_log_path = Path(log_paths["combined"])
+                    # Continue the outer `while` to start tailing the new process
+                else:
+                    logger.info("Process has exited and was not restarted.")
+                    break  # Exit the outer `while` loop
+        finally:
+            # Cleanly stop the tailing thread
+            stop_tail_event.set()
+            tail_thread.join(timeout=2.0)
+
+    # After the main loop, decide what to do on user-initiated exit
+    if shutdown_event.is_set():
+        logger.debug("Shutdown event received, deciding action.")
+        should_stop = False
+        if args.on_exit == "stop":
+            should_stop = True
+        elif args.on_exit == "detach":
+            should_stop = False
+        elif sys.stdin.isatty():
+            try:
+                stop_choice = input(
+                    f"Stop running process '{command_str}' (PID {current_pid})? [y/N] "
+                )
+                if stop_choice.lower() == "y":
+                    should_stop = True
+            except (EOFError, KeyboardInterrupt):
+                print()  # Print a newline to make output cleaner
+                should_stop = False
+
+        if should_stop:
+            print(f"--- Stopping process {current_pid}... ---", file=sys.stderr)
+            try:
+                await client.call_tool("stop_process", {"pid": current_pid})
+            except Exception as e:
+                logger.error(f"Failed to stop process {current_pid}: {e}")
+        else:
+            print(
+                "\n--- Detaching from log tailing. Process remains running. ---",
+                file=sys.stderr,
+            )
 
     # Cleanup signal handler
     try:

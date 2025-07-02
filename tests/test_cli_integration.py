@@ -26,6 +26,7 @@ async def _launch_cli(
         host,
         "--port",
         port,
+        "-v",
     ]
     if on_exit:
         cli_args.extend(["--on-exit", on_exit])
