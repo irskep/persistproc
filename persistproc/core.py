@@ -101,11 +101,17 @@ class ProcessManager:
         self.log_manager = LogManager(self.log_directory)
         self.processes: Dict[int, ProcessInfo] = {}
         self.lock = threading.Lock()
+        self._stop_monitor = threading.Event()
 
         self.monitor_thread = threading.Thread(
             target=self._monitor_processes, daemon=True
         )
         self.monitor_thread.start()
+
+    def stop_monitor_thread(self):
+        """Signals the monitor thread to stop."""
+        self._stop_monitor.set()
+        self.monitor_thread.join(timeout=2)
 
     def _log_event(self, p_info: ProcessInfo, message: str):
         logger.info(f"AUDIT (PID {p_info.pid}): {message}")
@@ -114,7 +120,7 @@ class ProcessManager:
             f.write(f"[{get_iso_timestamp()}] [SYSTEM] {message}\n")
 
     def _monitor_processes(self):
-        while True:
+        while not self._stop_monitor.is_set():
             with self.lock:
                 running_procs = {
                     pid: p for pid, p in self.processes.items() if p.status == "running"
@@ -198,21 +204,57 @@ class ProcessManager:
 
         if not p_info:
             raise ValueError(f"Process with PID {pid} not found.")
-        if p_info.status != "running":
-            raise ValueError(f"Process {pid} is not running (status: {p_info.status}).")
 
+        # If the process isn't running, just return its current state.
+        # This makes the function idempotent and avoids race conditions.
+        if p_info.status != "running":
+            logger.warning(
+                f"Stop called on non-running process {pid} (status: {p_info.status}). Returning current state."
+            )
+            return process_info_to_dict(p_info)
+
+        # 1. Send graceful signal
         try:
-            # Unix/Linux/macOS only - use process groups
-            sig = signal.SIGKILL if force else signal.SIGTERM
-            os.killpg(os.getpgid(pid), sig)
-            self._log_event(p_info, f"Sent signal {sig.name} to process group {pid}.")
+            graceful_sig = signal.SIGKILL if force else signal.SIGTERM
+            self._send_signal(pid, graceful_sig)
+            self._log_event(
+                p_info, f"Sent signal {graceful_sig.name} to process group {pid}."
+            )
         except ProcessLookupError:
             self._log_event(p_info, "Process was already gone when stop was requested.")
+            with self.lock:
+                p_info.status = "terminated"
+            return process_info_to_dict(p_info)
         except Exception as e:
             raise RuntimeError(f"Failed to send signal to process {pid}: {e}")
 
+        # 2. Wait for graceful exit
+        if not self._wait_for_exit(p_info.proc, timeout=8):
+            if force:
+                # Already used SIGKILL, nothing more to do
+                self._log_event(p_info, "Process did not exit after SIGKILL timeout.")
+            else:
+                # Escalate to SIGKILL
+                try:
+                    self._send_signal(pid, signal.SIGKILL)
+                    self._log_event(
+                        p_info, f"Escalated to SIGKILL for process group {pid}."
+                    )
+                except ProcessLookupError:
+                    pass  # Gone in between
+                # Wait a short time
+                if not self._wait_for_exit(p_info.proc, timeout=2):
+                    self._log_event(
+                        p_info, "Timed-out waiting for process to exit after SIGKILL."
+                    )
+                    return {"error": "timeout", **process_info_to_dict(p_info)}
+
+        # Clean up proc reference
         with self.lock:
-            p_info.status = "terminated"
+            p_info.proc = None
+            p_info.status = (
+                "terminated" if p_info.status == "running" else p_info.status
+            )
 
         return process_info_to_dict(p_info)
 
@@ -311,6 +353,23 @@ class ProcessManager:
             return all_lines[-lines:]
 
         return all_lines
+
+    # --- Internal helpers -------------------------------------------------
+
+    def _send_signal(self, pid: int, sig: signal.Signals):
+        """Send *sig* to the process group rooted at *pid* (Unix only)."""
+        os.killpg(os.getpgid(pid), sig)
+
+    def _wait_for_exit(self, proc: Optional[subprocess.Popen], timeout: float) -> bool:
+        """Return True if *proc* terminates within *timeout* seconds."""
+        if proc is None:
+            # We no longer track the process object; assume gone.
+            return True
+        try:
+            proc.wait(timeout=timeout)
+            return True
+        except subprocess.TimeoutExpired:
+            return False
 
 
 def process_info_to_dict(p_info: ProcessInfo) -> dict:

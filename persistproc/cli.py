@@ -173,9 +173,9 @@ async def run_and_tail_async(args: argparse.Namespace):
             log_paths = json.loads(log_paths_str)
             combined_log_path = Path(log_paths["combined"])
 
-            # 3. Tail the log file
+            # 3. Tail the log file, monitoring for restarts
             await tail_and_monitor_process_async(
-                client, pid, command_str, combined_log_path, args.raw
+                client, pid, command_str, combined_log_path, args.raw, p_info
             )
 
     except Exception as e:
@@ -188,142 +188,196 @@ async def run_and_tail_async(args: argparse.Namespace):
 
 async def tail_and_monitor_process_async(
     client: Client,
-    pid: int,
+    initial_pid: int,
     command_str: str,
-    log_path: Path,
+    initial_log_path: Path,
     show_raw_log: bool = False,
+    initial_p_info: dict = None,
 ):
-    """Tails a log file while monitoring the corresponding process for completion."""
-    while not log_path.exists():
-        await asyncio.sleep(0.1)
-
-    log_file = log_path.open("r")
-
-    print(f"--- Tailing output for PID {pid} ('{command_str}') ---", file=sys.stderr)
-    print(f"--- Log file: {log_path} ---", file=sys.stderr)
-    print("--- Press Ctrl+C to stop tailing. ---", file=sys.stderr)
-
-    stop_event = threading.Event()
-
-    def _process_line_for_raw_output(line: str) -> Optional[str]:
-        if "[SYSTEM]" in line:
-            return None  # Suppress system logs in raw mode
-
-        # Use re.sub to remove only the prefix, which is cleaner than
-        # managing capture groups that might eat the trailing newline.
-        return TIMESTAMP_REGEX.sub("", line, count=1)
-
-    def tail_worker(raw_log: bool):
-        # First, print any existing content in the file
-        for line in log_file:
-            output_line = line if raw_log else _process_line_for_raw_output(line)
-            if output_line is not None:
-                sys.stdout.write(output_line)
-        sys.stdout.flush()
-
-        # Now, tail for new content
-        while not stop_event.is_set():
-            line = log_file.readline()
-            if not line:
-                time.sleep(0.1)  # Avoid busy-waiting
-                continue
-
-            output_line = line if raw_log else _process_line_for_raw_output(line)
-            if output_line is not None:
-                sys.stdout.write(output_line)
-                sys.stdout.flush()
-        log_file.close()
-
-    tail_thread = threading.Thread(
-        target=tail_worker, args=(show_raw_log,), daemon=True
+    """
+    Tails a log file while monitoring the corresponding process for restarts and completion.
+    """
+    current_pid = initial_pid
+    current_log_path = initial_log_path
+    last_known_start_time = (
+        initial_p_info.get("start_time", "") if initial_p_info else ""
     )
-    tail_thread.start()
 
-    try:
-        # Monitor process status in the main async task
-        while tail_thread.is_alive():
-            try:
-                status_result = await client.call_tool(
-                    "get_process_status", {"pid": pid}
+    # This is the main loop that allows us to follow a process through restarts.
+    while True:
+        # Wait for the log file to appear, which can take a moment after a restart.
+        wait_for_log_start = time.monotonic()
+        while not current_log_path.exists():
+            if time.monotonic() - wait_for_log_start > 5.0:
+                logger.error(
+                    f"Timed out waiting for log file {current_log_path} to appear."
                 )
-                p_status = json.loads(status_result[0].text)
-                if "error" in p_status or p_status.get("status") != "running":
-                    status = p_status.get("status", "unknown")
-                    exit_code = p_status.get("exit_code")
-                    message = f"Process {pid} is no longer running (status: {status}"
-                    if exit_code is not None:
-                        message += f", exit_code: {exit_code}"
-                    message += ")."
-                    logger.info(message)
-                    break
-            except Exception as e:
-                logger.debug(f"Could not poll process status: {e}")
-                break  # Stop if we can't talk to the server
+                return
+            await asyncio.sleep(0.1)
 
-            await asyncio.sleep(2)
-
-    except (KeyboardInterrupt, asyncio.CancelledError):
-        stop_event.set()  # Stop the tailing thread immediately
-        print("\n--- Log tailing interrupted. ---", file=sys.stderr)
         try:
-            choice = ""
-            # Platform-specific single-character input for Unix-like systems
-            if sys.platform != "win32":
-                import tty, termios
-
-                print(
-                    f"Do you want to stop the running process '{command_str}' (PID {pid})? [y/N] ",
-                    end="",
-                    flush=True,
-                )
-                fd = sys.stdin.fileno()
-                old_settings = termios.tcgetattr(fd)
-                try:
-                    tty.setcbreak(sys.stdin.fileno())
-                    choice = sys.stdin.read(1).lower()
-                finally:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-                print(choice)  # Echo the choice to the user for clarity
-            else:
-                # Standard input fallback for Windows
-                choice = (
-                    input(
-                        f"Do you want to stop the running process '{command_str}' (PID {pid})? [y/N] "
-                    )
-                    .lower()
-                    .strip()
-                )
-
-            if choice == "y":
-                print(f"--- Sending stop request for PID {pid}... ---", file=sys.stderr)
-                # We can still await here because asyncio.run waits for the cancelled task to finish.
-                stop_result = await client.call_tool(
-                    "stop_process", {"pid": pid, "force": False}
-                )
-                stop_info = json.loads(stop_result[0].text)
-                if "error" in stop_info:
-                    logger.error(
-                        f"Failed to stop process: {stop_info['error']}", file=sys.stderr
-                    )
-                else:
-                    print("--- Stop request sent successfully. ---", file=sys.stderr)
-            else:
-                print(
-                    f"--- Leaving process PID {pid} running in the background. ---",
-                    file=sys.stderr,
-                )
-        except KeyboardInterrupt:
-            # This handles Ctrl+C being pressed during the input() prompt
-            print("\n--- Prompt aborted. Leaving process running. ---", file=sys.stderr)
-        except Exception as e:
+            log_file = current_log_path.open("r", encoding="utf-8")
+        except FileNotFoundError:
             logger.error(
-                f"Could not communicate with server to stop process {pid}: {e}",
+                f"Log file {current_log_path} not found after waiting. Aborting."
+            )
+            return
+
+        print(
+            f"--- Tailing output for PID {current_pid} ('{command_str}') ---",
+            file=sys.stderr,
+        )
+        if current_pid != initial_pid:
+            print(
+                f"--- Process was restarted. Original PID was {initial_pid}. ---",
                 file=sys.stderr,
             )
+        print(f"--- Log file: {current_log_path} ---", file=sys.stderr)
+        print("--- Press Ctrl+C to stop tailing. ---", file=sys.stderr)
 
-    finally:
-        stop_event.set()
-        tail_thread.join(timeout=2)
+        stop_event = threading.Event()
+        tail_thread = None
+
+        def _process_line_for_raw_output(line: str) -> Optional[str]:
+            if "[SYSTEM]" in line:
+                return None
+            return TIMESTAMP_REGEX.sub("", line, count=1)
+
+        def tail_worker(raw_log: bool):
+            try:
+                # Print existing content
+                for line in log_file:
+                    output_line = (
+                        line if raw_log else _process_line_for_raw_output(line)
+                    )
+                    if output_line is not None:
+                        sys.stdout.write(output_line)
+                sys.stdout.flush()
+
+                # Tail for new content
+                while not stop_event.is_set():
+                    line = log_file.readline()
+                    if not line:
+                        time.sleep(0.1)
+                        continue
+                    output_line = (
+                        line if raw_log else _process_line_for_raw_output(line)
+                    )
+                    if output_line is not None:
+                        sys.stdout.write(output_line)
+                        sys.stdout.flush()
+            finally:
+                log_file.close()
+
+        tail_thread = threading.Thread(
+            target=tail_worker, args=(show_raw_log,), daemon=True
+        )
+        tail_thread.start()
+
+        restarted_info = None
+        process_truly_exited = False
+
+        try:
+            # Monitor process status in the main async task
+            while tail_thread.is_alive():
+                try:
+                    status_result = await client.call_tool(
+                        "get_process_status", {"pid": current_pid}
+                    )
+                    p_status = json.loads(status_result[0].text)
+                    if "error" in p_status or p_status.get("status") != "running":
+                        # Process is not running. Check if it was restarted.
+                        list_res = await client.call_tool("list_processes", {})
+                        all_procs = json.loads(list_res[0].text)
+
+                        # Find any other running process with the same command.
+                        for p in all_procs:
+                            if (
+                                p.get("command") == command_str
+                                and p.get("status") == "running"
+                                and p.get("pid") != current_pid
+                            ):
+                                restarted_info = p
+                                break
+
+                        process_truly_exited = (
+                            True  # Assume it's exited unless we find a restarted one
+                        )
+                        break  # Exit the inner monitoring loop
+
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.warning(f"Could not parse server status: {e}. Retrying.")
+                except Exception as e:
+                    logger.error(
+                        f"Error monitoring process status: {e}. Assuming process exited."
+                    )
+                    process_truly_exited = True
+                    break
+
+                await asyncio.sleep(1.5)  # Polling interval
+
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            print("\n--- Log tailing interrupted. ---", file=sys.stderr)
+            try:
+                stop_choice = input(
+                    f"Do you want to stop the running process '{command_str}' (PID {current_pid})? [y/N] "
+                )
+                if stop_choice.lower() == "y":
+                    print(f"--- Stopping process {current_pid}... ---", file=sys.stderr)
+                    await client.call_tool("stop_process", {"pid": current_pid})
+            except (EOFError, KeyboardInterrupt):
+                print(
+                    "\n--- Detaching from log tailing. Process remains running. ---",
+                    file=sys.stderr,
+                )
+            return  # Exit cleanly on interrupt
+
+        finally:
+            stop_event.set()
+            if tail_thread:
+                tail_thread.join(timeout=1.0)
+
+        # --- End of inner monitoring block ---
+
+        if restarted_info:
+            print(
+                f"\n--- Process '{command_str}' restarted. Now tracking new PID {restarted_info['pid']}. ---",
+                file=sys.stderr,
+            )
+            try:
+                new_pid = restarted_info["pid"]
+                logs_res = await client.call_tool(
+                    "get_process_log_paths", {"pid": new_pid}
+                )
+                log_paths = json.loads(logs_res[0].text)
+
+                if "error" in log_paths:
+                    logger.error(
+                        f"Could not get log paths for restarted process: {log_paths['error']}"
+                    )
+                    break
+
+                current_pid = new_pid
+                current_log_path = Path(log_paths["combined"])
+                last_known_start_time = restarted_info.get("start_time", "")
+                # The 'while True' loop will now repeat with the new info
+            except Exception as e:
+                logger.error(f"Error switching to restarted process: {e}")
+                break  # Exit the main loop on failure
+
+        elif process_truly_exited:
+            print(
+                f"\n--- Process '{command_str}' (PID {current_pid}) has exited. ---",
+                file=sys.stderr,
+            )
+            break  # Exit the main loop
+        else:
+            # This path is taken after a clean Ctrl+C that doesn't stop the process
+            print(
+                "\n--- Detaching from log tailing. Process remains running. ---",
+                file=sys.stderr,
+            )
+            break
 
 
 def run_client(args: argparse.Namespace):

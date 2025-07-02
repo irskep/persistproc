@@ -5,14 +5,73 @@ import threading
 import time
 from pathlib import Path
 from unittest.mock import Mock, patch
+import socket
+import uvicorn
+from persistproc.server import create_app, run_server
+from persistproc.utils import get_app_data_dir
+import persistproc.server
 
 import pytest
 
 
-@pytest.fixture
-def temp_dir():
-    """Provides a temporary directory that's cleaned up after the test."""
+@pytest.fixture(scope="session")
+def free_port():
+    """Finds a free port for the test server to listen on."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture(scope="session")
+def live_server_url(free_port, temp_dir_session, monkeypatch_session):
+    """Starts a live server in a thread and provides its URL."""
+
+    monkeypatch_session.setattr(
+        "persistproc.server.get_app_data_dir", lambda name: temp_dir_session
+    )
+    # Prevent signal handlers from being set up in the test thread
+    monkeypatch_session.setattr(
+        "persistproc.server.setup_signal_handlers", lambda: None
+    )
+
+    server_thread = threading.Thread(
+        target=run_server,
+        kwargs={"host": "127.0.0.1", "port": free_port},
+        daemon=True,
+    )
+    server_thread.start()
+    time.sleep(1)  # Give the server time to start
+
+    # Wait for the process_manager to be initialized
+    while persistproc.server.process_manager is None:
+        time.sleep(0.1)
+
+    # Ensure monitor thread is stopped after tests
+    yield f"http://127.0.0.1:{free_port}"
+    persistproc.server.process_manager.stop_monitor_thread()
+
+
+@pytest.fixture(scope="session")
+def temp_dir_session():
+    """Provides a temporary directory for the whole test session."""
     temp_path = Path(tempfile.mkdtemp())
+    yield temp_path
+    shutil.rmtree(temp_path, ignore_errors=True)
+
+
+@pytest.fixture(scope="session")
+def monkeypatch_session():
+    from _pytest.monkeypatch import MonkeyPatch
+
+    mpatch = MonkeyPatch()
+    yield mpatch
+    mpatch.undo()
+
+
+@pytest.fixture
+def temp_dir(temp_dir_session):
+    """Provides a temporary directory that's cleaned up after the test."""
+    temp_path = Path(tempfile.mkdtemp(dir=temp_dir_session))
     yield temp_path
     shutil.rmtree(temp_path, ignore_errors=True)
 

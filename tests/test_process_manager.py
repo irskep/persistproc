@@ -149,7 +149,7 @@ class TestProcessManager:
             pm.stop_process(12345)
 
     def test_stop_process_already_gone(self, temp_dir, no_monitor_thread, mock_killpg):
-        """Test stopping process that's already gone."""
+        """Test stopping a process that has already been killed externally."""
         pm = ProcessManager(temp_dir)
 
         # Add a running process
@@ -341,3 +341,87 @@ class TestProcessManager:
             assert log_file.exists()
             content = log_file.read_text()
             assert "[SYSTEM] Test message" in content
+
+    def test_stop_process_not_running(self, temp_dir, no_monitor_thread):
+        """Test that calling stop on a non-running process is handled gracefully."""
+        pm = ProcessManager(temp_dir)
+
+        # Add an exited process
+        process_info = ProcessInfo(
+            pid=12345,
+            command="echo hello",
+            start_time="2023-01-01T12:00:00.000Z",
+            status="exited",
+            log_prefix="12345.echo_hello",
+        )
+        pm.processes[12345] = process_info
+
+        # Should not raise an error, just return the current state
+        result = pm.stop_process(12345)
+        assert result["status"] == "exited"
+
+    def test_stop_process_already_gone(self, temp_dir, no_monitor_thread, mock_killpg):
+        """Test stopping a process that has already been killed externally."""
+        pm = ProcessManager(temp_dir)
+
+        # Add a running process
+        process_info = ProcessInfo(
+            pid=12345,
+            command="echo hello",
+            start_time="2023-01-01T12:00:00.000Z",
+            status="running",
+            log_prefix="12345.echo_hello",
+        )
+        pm.processes[12345] = process_info
+
+        with patch("persistproc.core.os.killpg", side_effect=ProcessLookupError()):
+            with patch.object(pm, "_log_event") as mock_log:
+                pm.stop_process(12345)
+
+                # Should log that process was already gone
+                mock_log.assert_called()
+                log_message = mock_log.call_args[0][1]
+                assert "already gone" in log_message
+
+    def test_stop_process_timeout_escalation(self, temp_dir, no_monitor_thread):
+        """If process ignores SIGTERM and SIGKILL, stop_process should return a timeout error."""
+        pm = ProcessManager(temp_dir)
+
+        p_info = ProcessInfo(
+            pid=22222,
+            command="sleep 30",
+            start_time="t",
+            status="running",
+            log_prefix="22222.sleep_30",
+        )
+        pm.processes[22222] = p_info
+
+        # Patch helpers so we simulate an unkillable process
+        with (
+            patch.object(pm, "_send_signal") as mock_sig,
+            patch.object(pm, "_wait_for_exit", return_value=False),
+        ):
+            res = pm.stop_process(22222)
+            assert "error" in res and res["error"] == "timeout"
+
+    def test_stop_process_force_kill(self, temp_dir, no_monitor_thread):
+        """With force=True, SIGKILL is sent immediately and timeout error is not returned even if wait fails."""
+        pm = ProcessManager(temp_dir)
+
+        p_info = ProcessInfo(
+            pid=33333,
+            command="sleep 30",
+            start_time="t",
+            status="running",
+            log_prefix="33333.sleep_30",
+        )
+        pm.processes[33333] = p_info
+
+        with (
+            patch.object(pm, "_send_signal") as mock_sig,
+            patch.object(pm, "_wait_for_exit", return_value=False),
+        ):
+            res = pm.stop_process(33333, force=True)
+            # Should not have error key
+            assert "error" not in res
+            assert res["status"] == "terminated"
