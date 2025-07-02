@@ -31,7 +31,7 @@ async def call_json(client: Client, tool: str, args: dict):
 
     last_exc: Exception | None = None
     base_url = client.transport.base_url if hasattr(client.transport, "base_url") else None  # type: ignore
-    for _ in range(12):
+    for attempt in range(24):
         try:
             res = await client.call_tool(tool, args)
             # fastmcp returns a list of Content objects; handle that
@@ -47,7 +47,9 @@ async def call_json(client: Client, tool: str, args: dict):
             # Retry transient 5xx errors stemming from FastMCP lifespan race conditions
             if e.response.status_code >= 500:
                 last_exc = e
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(
+                    0.3 + 0.012 * attempt
+                )  # simple back-off up to ~0.6 s
                 continue
             raise
         except RuntimeError as e:
@@ -61,7 +63,7 @@ async def call_json(client: Client, tool: str, args: dict):
                     if base_url is not None:
                         client = Client(base_url)
                         await client.__aenter__()  # type: ignore[misc]
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.3 + 0.012 * attempt)
                 continue
     # Retries exhausted – re-raise last exception if present, else generic RuntimeError
     if last_exc is not None:
