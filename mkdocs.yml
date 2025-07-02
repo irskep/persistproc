@@ -64,9 +64,6 @@ plugins:
 
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Agent Configuration: configuring-agents.md
-  - Prompting Tips: prompting-tips.md
 
 extra:
   social:

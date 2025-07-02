@@ -1,6 +1,6 @@
 # persistproc
 
-A persistent process management server for local development, designed to be controlled by AI agents.
+A shared process layer for multi-agent development workflows
 
 [![PyPI version](https://badge.fury.io/py/persistproc.svg)](https://badge.fury.io/py/persistproc)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -10,36 +10,28 @@ A persistent process management server for local development, designed to be con
 
 ## What is `persistproc`?
 
-When developing locally, you often run multiple long-running processes like web servers, bundlers, or test watchers. Managing these across different terminals can be cumbersome, and it's difficult for external tools—like AI agents—to interact with them.
+When developing locally, you often need long-running processes like web servers, bundlers, or test watchers. Depending on where you start these processes, agents may or may not have access to them. If you start your web server from Cursor, then Claude Code can't see its output. If you prefer to run things in iTerm instead of the Cursor terminal, then Cursor's agents can't see or control the server process.
 
-`persistproc` solves this by providing a central server to run and manage your development processes. You can start processes from your terminal, and they will continue to run in the background, managed by the server.
+`persistproc` is an MCP server and command line tool which lets processes be started, inspected, and controlled from any terminal or agent. If you start your web server in iTerm, then Claude Code and Cursor can see its output and stop or restart it. An agent can also start a long-running process that you can then easily start watching the output of in your terminal.
 
-The primary way to interact with these processes is through a set of MCP tools. This allows AI agents (in editors like Cursor) to list, start, stop, restart, and view the logs of your development processes.
+Here's how it works:
 
-## Core Use Case
-
-The main goal of `persistproc` is to create a stable layer of background processes that both you and your AI development assistants can see and control.
-
-1.  You start the `persistproc` server once.
-2.  You use the `persistproc` command to start your development tasks (e.g., `persistproc npm run dev`).
-3.  Your AI agent, connected to the server, can now manage that process for you—restarting it after it makes a code change, or reading its logs to debug an issue—without needing to interrupt you or ask for terminal access.
+1.  Run `persistproc --serve` once.
+2.  Use an agent, or the `persistproc` command, to start your development tasks (e.g., `persistproc npm run dev`, or "Hey claude, run `npm run dev` using persistproc").
+3.  Your AI agent, connected to the server, can now manage that process for you—restarting it after it makes a code change, or reading its logs to debug an issue—without needing to interrupt you or ask for terminal access. It doesn't matter if you or the agent started the process.
 
 This creates a seamless workflow where the agent can autonomously manage the development environment in the background.
 
-## Core Functionality
+## Functions
 
-*   **Process Server**: A single server (`persistproc --serve`) runs in the background and manages child processes.
-*   **Client CLI**: A simple client (`persistproc <command>`) sends a command to the server and tails its logs to your terminal.
-*   **Agent Tools (MCP)**: A suite of functions exposed over an HTTP endpoint for agents to manage processes. This includes:
-    *   `start_process`
-    *   `stop_process`
-    *   `restart_process`
-    *   `list_processes`
-    *   `get_process_status`
-    *   `get_process_output`
-*   **Log Persistence**: stdout and stderr for each process are captured and stored in log files.
+*   `start_process`
+*   `stop_process`
+*   `restart_process`
+*   `list_processes`
+*   `get_process_status`
+*   `get_process_output`
 
-## Quick Start
+## Getting started
 
 ### 1. Install `persistproc`
 
@@ -49,15 +41,37 @@ pip install persistproc
 
 ### 2. Start the Server
 
-Run this in a dedicated terminal that you can leave running.
+Run this in a dedicated terminal and leave it running.
 
 ```bash
 persistproc --serve
 ```
 
-The server will log its own status to standard output and manage processes in the background.
+The server will log its own status to stdout and manage processes.
 
-### 3. Start a Process
+### 3. Configure Your AI Agent
+
+To allow an AI agent to control these processes, configure its MCP client to point to the `persistproc` server.
+
+#### Cursor (in `.cursor/mcp.json`)
+
+```json
+{
+  "mcp.servers": {
+    "persistproc": {
+      "url": "http://127.0.0.1:8947/mcp/"
+    }
+  }
+}
+```
+
+#### Claude Code
+
+```sh
+claude mcp add --transport http persistproc http://127.0.0.1:8947/mcp/
+```
+
+### 2. Start a Process
 
 In another terminal, `cd` to your project's directory and run your command via `persistproc`.
 
@@ -69,25 +83,9 @@ persistproc npm run dev
 
 The command is sent to the server, and its output is streamed to your terminal. You can safely close this terminal, and the process will continue to run.
 
-### 4. Configure Your AI Agent
-
-To allow an AI agent to control these processes, configure its MCP client to point to the `persistproc` server.
-
-**Example: Cursor/VS Code `settings.json`**
-```json
-{
-  "mcp.servers": {
-    "persistproc": {
-      "url": "http://127.0.0.1:8947/mcp/"
-    }
-  }
-}
-```
+Alternatively, just ask your agent to "run your dev server using persistproc," and it will probably find the right command by looking at your `package.json` file and run it using `persistproc`.
 
 With this, your agent can now use the available tools to manage your development environment.
-
-**Agent**: "Restart the dev server." -> `restart_process(pid=...)`
-**Agent**: "Show me the latest errors." -> `get_process_output(pid=..., stream="stderr")`
 
 ## Example Agent Interaction
 
