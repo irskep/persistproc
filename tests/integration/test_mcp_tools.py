@@ -30,7 +30,8 @@ async def call_json(client: Client, tool: str, args: dict):
     import httpx, asyncio
 
     last_exc: Exception | None = None
-    for _ in range(8):
+    base_url = client.transport.base_url if hasattr(client.transport, "base_url") else None  # type: ignore
+    for _ in range(12):
         try:
             res = await client.call_tool(tool, args)
             # fastmcp returns a list of Content objects; handle that
@@ -46,6 +47,19 @@ async def call_json(client: Client, tool: str, args: dict):
             # Retry transient 5xx errors stemming from FastMCP lifespan race conditions
             if e.response.status_code >= 500:
                 last_exc = e
+                await asyncio.sleep(0.3)
+                continue
+            raise
+        except RuntimeError as e:
+            # fastmcp raises this when the underlying HTTP session got closed after a 500
+            if "Client is not connected" in str(e) and base_url is not None:
+                last_exc = e
+                try:
+                    await client.__aexit__(None, None, None)  # type: ignore[misc]
+                except Exception:
+                    pass
+                client = Client(base_url)
+                await client.__aenter__()  # type: ignore[misc]
                 await asyncio.sleep(0.3)
                 continue
             raise
