@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERRORname: Build and Deploy Documentation
+name: Build and Deploy Documentation
 
 on:
   push:
@@ -59,32 +59,83 @@ jobs:
           path: './site'
           retention-days: 30
 
-  comment:
+  surge-preview:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs: build
     permissions:
       pull-requests: write
     steps:
+      - name: Download built docs
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-preview-pr-${{ github.event.number }}
+          path: ./site
+          
+      - name: Install Surge
+        run: npm install -g surge
+        
+      - name: Deploy to Surge
+        env:
+          SURGE_LOGIN: ${{ secrets.SURGE_LOGIN }}
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+        run: |
+          # Create a unique subdomain for this PR
+          SURGE_DOMAIN="persistproc-pr-${{ github.event.number }}.surge.sh"
+          
+          # Deploy to Surge (with fallback if secrets not configured)
+          if [ -n "$SURGE_LOGIN" ] && [ -n "$SURGE_TOKEN" ]; then
+            surge ./site $SURGE_DOMAIN
+            echo "PREVIEW_URL=https://$SURGE_DOMAIN" >> $GITHUB_ENV
+            echo "DEPLOYMENT_STATUS=success" >> $GITHUB_ENV
+          else
+            echo "DEPLOYMENT_STATUS=skipped" >> $GITHUB_ENV
+            echo "Surge.sh credentials not configured. Skipping live preview deployment."
+          fi
+          
       - name: Comment on PR
         uses: actions/github-script@v7
         with:
           script: |
             const prNumber = context.payload.pull_request.number;
+            const deploymentStatus = process.env.DEPLOYMENT_STATUS;
+            const previewUrl = process.env.PREVIEW_URL;
             const runId = context.runId;
             
-            const comment = `## 📚 Documentation Preview
+            let comment;
             
-            The documentation has been built for this PR! You can preview the changes by downloading the artifact:
-            
-            1. Go to the [Actions tab](https://github.com/${{ github.repository }}/actions/runs/${runId})
-            2. Scroll down to the "Artifacts" section
-            3. Download \`docs-preview-pr-${prNumber}\`
-            4. Extract the ZIP file and open \`index.html\` in your browser
-            
-            **Or use this direct link to the run:** https://github.com/${{ github.repository }}/actions/runs/${runId}
-            
-            The artifact will be available for 30 days and will be automatically cleaned up.`;
+            if (deploymentStatus === 'success') {
+              comment = `## 📚 Documentation Preview
+              
+              **🌐 Live Preview:** [${previewUrl}](${previewUrl})
+              
+              The documentation for this PR has been deployed and is viewable in your browser! 
+              
+              - **Preview URL**: [${previewUrl}](${previewUrl})
+              - **Updated**: ${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC
+              - **Status**: ✅ Ready to view
+              
+              The preview will be automatically updated when you push new commits to this PR.
+              
+              ---
+              
+              *Powered by [Surge.sh](https://surge.sh) - This preview will be available until the PR is closed.*`;
+            } else {
+              comment = `## 📚 Documentation Preview
+              
+              The documentation has been built for this PR! 
+              
+              **📥 Download Preview:**
+              1. Go to the [Actions tab](https://github.com/${{ github.repository }}/actions/runs/${runId})
+              2. Download the \`docs-preview-pr-${prNumber}\` artifact
+              3. Extract and open \`index.html\` in your browser
+              
+              **🔗 Direct link:** https://github.com/${{ github.repository }}/actions/runs/${runId}
+              
+              ---
+              
+              *To enable live previews, configure \`SURGE_LOGIN\` and \`SURGE_TOKEN\` secrets in repository settings.*`;
+            }
             
             // Check if we already commented
             const { data: comments } = await github.rest.issues.listComments({
