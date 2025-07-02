@@ -44,8 +44,11 @@ class TestCLIServerInteraction:
         )
 
         try:
-            # Allow up to 20 s for the server to settle in extremely slow CI runs
-            for _ in range(20):
+            target_process = None  # ensure defined even if never found
+            list_res: list[dict] | None = None
+
+            # Allow up to 30 s for the server to settle in extremely slow CI runs
+            for _ in range(30):
                 try:
                     list_res = await call_json(live_mcp_client, "list_processes", {})
                 except Exception:
@@ -147,9 +150,9 @@ class TestCLIServerInteraction:
         )
 
         try:
-            # Collect up to 40 lines (or ~15 s max) to account for slow startup
+            # Collect up to 60 lines (or ~20 s max) to account for slow startup
             raw_lines: list[str] = []
-            for _ in range(40):
+            for _ in range(60):
                 try:
                     line = await asyncio.wait_for(
                         cli_proc.stdout.readline(), timeout=3.5
