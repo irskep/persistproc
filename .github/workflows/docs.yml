@@ -9,7 +9,13 @@ on:
       - 'requirements-docs.txt'
       - '.github/**/*.yml'
   pull_request:
-    # Run on any PR; internal step decides whether to build
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'mkdocs-local.yml'
+      - 'requirements-docs.txt'
+    branches-ignore:
+      - 'dependabot/**'
 
 permissions:
   contents: read
