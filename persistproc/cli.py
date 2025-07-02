@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import signal
 import sys
 import threading
 import time
@@ -197,6 +198,21 @@ async def tail_and_monitor_process_async(
     """
     Tails a log file while monitoring the corresponding process for restarts and completion.
     """
+    shutdown_event = asyncio.Event()
+
+    def _handle_sigint():
+        # This handler will be called when SIGINT is received.
+        print("\n--- Signal received, preparing to detach. ---", file=sys.stderr)
+        shutdown_event.set()
+
+    loop = asyncio.get_running_loop()
+    try:
+        loop.add_signal_handler(signal.SIGINT, _handle_sigint)
+    except NotImplementedError:
+        # This will be raised on systems that don't support add_signal_handler (e.g., Windows)
+        # We can ignore it for this project as it's Unix-only.
+        pass
+
     current_pid = initial_pid
     current_log_path = initial_log_path
     last_known_start_time = (
@@ -279,7 +295,7 @@ async def tail_and_monitor_process_async(
 
         try:
             # Monitor process status in the main async task
-            while tail_thread.is_alive():
+            while tail_thread.is_alive() and not shutdown_event.is_set():
                 try:
                     status_result = await client.call_tool(
                         "get_process_status", {"pid": current_pid}
@@ -316,28 +332,40 @@ async def tail_and_monitor_process_async(
 
                 await asyncio.sleep(1.5)  # Polling interval
 
-        except (KeyboardInterrupt, asyncio.CancelledError):
-            print("\n--- Log tailing interrupted. ---", file=sys.stderr)
-            try:
-                stop_choice = input(
-                    f"Do you want to stop the running process '{command_str}' (PID {current_pid})? [y/N] "
-                )
-                if stop_choice.lower() == "y":
-                    print(f"--- Stopping process {current_pid}... ---", file=sys.stderr)
-                    await client.call_tool("stop_process", {"pid": current_pid})
-            except (EOFError, KeyboardInterrupt):
-                print(
-                    "\n--- Detaching from log tailing. Process remains running. ---",
-                    file=sys.stderr,
-                )
-            return  # Exit cleanly on interrupt
+        except asyncio.CancelledError:
+            # This can happen if the parent task is cancelled.
+            print("\n--- Tailing task cancelled. ---", file=sys.stderr)
 
         finally:
             stop_event.set()
             if tail_thread:
                 tail_thread.join(timeout=1.0)
+            try:
+                loop.remove_signal_handler(signal.SIGINT)
+            except NotImplementedError:
+                pass
 
         # --- End of inner monitoring block ---
+
+        if shutdown_event.is_set() and not process_truly_exited:
+            if sys.stdin.isatty():
+                try:
+                    stop_choice = input(
+                        f"Do you want to stop the running process '{command_str}' (PID {current_pid})? [y/N] "
+                    )
+                    if stop_choice.lower() == "y":
+                        print(
+                            f"--- Stopping process {current_pid}... ---",
+                            file=sys.stderr,
+                        )
+                        # We need to run this async, so we create a small task
+                        await asyncio.create_task(
+                            client.call_tool("stop_process", {"pid": current_pid})
+                        )
+                except (EOFError, KeyboardInterrupt):
+                    # This happens on Ctrl+C during input() or if stdin is closed
+                    pass  # The default is to detach, so we just continue
+            # If not in a TTY, we don't prompt and just proceed to detach.
 
         if restarted_info:
             print(
@@ -386,4 +414,14 @@ def run_client(args: argparse.Namespace):
 
     setup_logging(args.verbose)
 
-    asyncio.run(run_and_tail_async(args))
+    try:
+        asyncio.run(run_and_tail_async(args))
+    except KeyboardInterrupt:
+        # Ensure graceful exit code (0) even if Ctrl+C is received very early,
+        # before our inner async handlers have a chance to catch it. This
+        # avoids negative return codes (-2) that cause CI test failures.
+        print(
+            "\n--- Detaching from log tailing. Process remains running. ---",
+            file=sys.stderr,
+        )
+        sys.exit(0)

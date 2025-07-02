@@ -38,7 +38,16 @@ def main():
     if args.serve:
         run_server(args.host, args.port)
     elif args.command:
-        asyncio.run(run_and_tail_async(args))
+        try:
+            asyncio.run(run_and_tail_async(args))
+        except KeyboardInterrupt:
+            # This is a fallback. The CLI's async code tries to handle Ctrl+C
+            # more gracefully. This can be triggered if Ctrl+C is pressed
+            # very early during CLI startup.
+            print(
+                "\n--- Detaching from log tailing. Process remains running. ---",
+                file=sys.stderr,
+            )
     else:
         # No command provided - show help
         parser.print_help()
