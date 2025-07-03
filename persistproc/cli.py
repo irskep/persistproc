@@ -11,8 +11,16 @@ from .serve import serve
 from .tools import get_tools
 from .logging_utils import CLI_LOGGER_NAME, setup_logging
 
+ENV_PORT = "PERSISTPROC_PORT"
+ENV_DATA_DIR = "PERSISTPROC_DATA_DIR"
+
 
 def get_default_data_dir() -> Path:
+    """Return default data directory, honouring *PERSISTPROC_DATA_DIR*."""
+
+    if ENV_DATA_DIR in os.environ and os.environ[ENV_DATA_DIR]:
+        return Path(os.environ[ENV_DATA_DIR]).expanduser().resolve()
+
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "persistproc"
     elif sys.platform.startswith("linux"):
@@ -23,6 +31,18 @@ def get_default_data_dir() -> Path:
     return Path.home() / ".persistproc"
 
 
+def get_default_port() -> int:
+    """Return default port, honouring *PERSISTPROC_PORT*."""
+
+    if ENV_PORT in os.environ:
+        try:
+            return int(os.environ[ENV_PORT])
+        except ValueError:
+            pass  # fall through to hard-coded default
+
+    return 8947
+
+
 def cli():
     parser = argparse.ArgumentParser(
         description="Process manager for multi-agent development workflows"
@@ -31,7 +51,7 @@ def cli():
     subparsers = parser.add_subparsers(dest="command")
 
     def add_common_args(parser):
-        parser.add_argument("--port", type=int, default=8947)
+        parser.add_argument("--port", type=int, default=get_default_port())
         parser.add_argument("--data-dir", type=Path, default=get_default_data_dir())
         parser.add_argument(
             "-v",

@@ -2,6 +2,7 @@ import subprocess
 import sys
 import time
 import re
+import os
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUN_IN_VENV = PROJECT_ROOT / "run-in-venv.sh"
 
 
-def _run_cli(data_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    """Execute *persistproc* via the repository's `run-in-venv.sh` helper."""
+def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    """Invoke the *persistproc* CLI via the repository's helper script.
+
+    Environment variables (*PERSISTPROC_…*) are assumed to have been set by the
+    ``_persistproc_env`` fixture in *tests/conftest.py*.
+    """
 
     cmd = [
         str(RUN_IN_VENV),
@@ -26,10 +31,8 @@ def _run_cli(data_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
         "-m",
         "persistproc",
         *args,
-        "--data-dir",
-        str(data_dir),
     ]
-    # Capture *both* stdout and stderr as text for assertions/debugging.
+
     return subprocess.run(cmd, text=True, capture_output=True, check=False)
 
 
@@ -66,21 +69,20 @@ def _wait_for_log_line(
 # -----------------------------------------------------------------------------
 
 
-def test_serve_command_writes_startup_log(tmp_path: Path):
+def test_serve_command_writes_startup_log(
+    persistproc_data_dir: Path, persistproc_port: int
+):
     """`persistproc serve` should emit a startup INFO log entry."""
 
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
-
     # The serve stub returns immediately.
-    result = _run_cli(data_dir, "serve", "--port", "9999")
+    result = _run_cli("serve")
 
     assert result.returncode == 0, result.stderr
 
     # Confirm the expected log entry is written.
     matched_line = _wait_for_log_line(
-        data_dir,
-        r"Starting MCP server on http://127\.0\.0\.1:9999",
+        persistproc_data_dir,
+        rf"Starting MCP server on http://127\.0\.0\.1:{persistproc_port}",
     )
 
     assert "MCP server" in matched_line

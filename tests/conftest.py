@@ -2,10 +2,18 @@ import sys
 from pathlib import Path
 from typing import Iterable
 import signal
+import socket
+import random
+import os
+from datetime import datetime
+import uuid
 
 import pytest
 
 LOG_PATTERN = "persistproc.run.*.log"
+
+ENV_PORT = "PERSISTPROC_PORT"
+ENV_DATA_DIR = "PERSISTPROC_DATA_DIR"
 
 
 def _find_latest_log(dirs: Iterable[Path]) -> Path | None:
@@ -98,3 +106,71 @@ def _enforce_timeout(request):
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, previous)  # type: ignore[arg-type]
+
+
+@pytest.fixture(autouse=True)
+def _persistproc_env(monkeypatch):
+    """Configure default data dir and port for *persistproc* CLI/tests.
+
+    This eliminates the need for per-test boilerplate – the CLI picks up these
+    settings via environment variables automatically.
+    """
+
+    # ------------------------------------------------------------------
+    # Data directory – keep within repository under *tests/_artifacts* so
+    # developers can inspect logs easily.  Ensure uniqueness to avoid clashes
+    # between concurrent/parameterised tests.
+    # ------------------------------------------------------------------
+
+    artifacts_root = Path(__file__).parent / "_artifacts"
+    artifacts_root.mkdir(parents=True, exist_ok=True)
+
+    unique = (
+        f"data_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:6]}"
+    )
+    data_dir = artifacts_root / unique
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv(ENV_DATA_DIR, str(data_dir))
+
+    # ------------------------------------------------------------------
+    # Port – select a currently-available TCP port.
+    # ------------------------------------------------------------------
+    def _choose_free_port() -> int:
+        for _ in range(50):  # try up to 50 random ports
+            port = random.randint(20000, 50000)
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                try:
+                    sock.bind(("127.0.0.1", port))
+                except OSError:
+                    continue  # in use – pick another
+                return port
+        # Fallback – let the OS pick an unused port (port 0) then reuse it.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            return sock.getsockname()[1]
+
+    port = _choose_free_port()
+    monkeypatch.setenv(ENV_PORT, str(port))
+
+    yield
+
+    # Cleanup: monkeypatch context manager restores env automatically.
+
+
+@pytest.fixture
+def persistproc_data_dir() -> Path:
+    """Return the data directory configured for *persistproc* in this test."""
+    val = os.environ.get(ENV_DATA_DIR)
+    if not val:
+        raise RuntimeError("PERSISTPROC_DATA_DIR not set by _persistproc_env")
+    return Path(val)
+
+
+@pytest.fixture
+def persistproc_port() -> int:
+    """Return the TCP port allocated for *persistproc* in this test."""
+    val = os.environ.get(ENV_PORT)
+    if not val:
+        raise RuntimeError("PERSISTPROC_PORT not set by _persistproc_env")
+    return int(val)
