@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from fastmcp import FastMCP
 
-from .tools import get_tools
+from .tools import ALL_TOOL_CLASSES
 from .process_manager import ProcessManager
 
 logger = logging.getLogger("persistproc.cli")
@@ -20,17 +21,15 @@ def _build_app(pm: ProcessManager) -> FastMCP:  # noqa: D401 – helper
         "A shared process layer for multi-agent development workflows.",
     )
 
-    for tool in get_tools(pm):
-        tool.register_tool(app)
+    for tool_cls in ALL_TOOL_CLASSES:
+        tool = tool_cls()
+        tool.register_tool(pm, app)
 
     return app
 
 
 def serve(
-    port: int,
-    verbose: int = 0,
-    *,
-    process_manager: ProcessManager,
+    port: int, verbose: int, data_dir: Path, log_path: Path
 ) -> None:  # noqa: D401
     """Start the *persistproc* MCP server.
 
@@ -47,7 +46,8 @@ def serve(
 
     # The server blocks in the foreground until interrupted.
 
-    pm = process_manager
+    pm = ProcessManager()
+    pm.bootstrap(data_dir, server_log_path=log_path)
     app = _build_app(pm)
 
     # FastMCP provides an ASGI app with convenience *run* method similar to
