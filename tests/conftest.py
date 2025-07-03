@@ -174,3 +174,24 @@ def persistproc_port() -> int:
     if not val:
         raise RuntimeError("PERSISTPROC_PORT not set by _persistproc_env")
     return int(val)
+
+
+# ---------------------------------------------------------------------------
+# Helper fixtures for starting/stopping the persistproc server used in e2e tests
+# ---------------------------------------------------------------------------
+
+from tests.helpers import start_persistproc
+
+
+@pytest.fixture
+def persistproc_server():
+    """Start a persistproc server for the duration of one test."""
+    proc = start_persistproc()
+    yield proc
+    proc.terminate()
+    proc.wait(timeout=10)
+
+
+@pytest.fixture
+def server(persistproc_server):  # alias for convenience
+    return persistproc_server
