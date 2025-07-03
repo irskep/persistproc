@@ -244,6 +244,13 @@ class ProcessManager:  # noqa: D101
             self._processes[proc.pid] = ent
 
         logger.info("Process %s started", proc.pid)
+        logger.debug(
+            "event=start_process pid=%s cmd=%s cwd=%s log_prefix=%s",
+            proc.pid,
+            cmd := " ".join(ent.command),
+            ent.working_directory,
+            prefix,
+        )
         return StartProcessResult(pid=proc.pid)
 
     # ------------------------------------------------------------------
@@ -283,14 +290,14 @@ class ProcessManager:  # noqa: D101
             # Escalate to SIGKILL once and wait briefly.
             try:
                 self._send_signal(pid, signal.SIGKILL)
-                logger.warning("Escalated to SIGKILL for PID %s", pid)
+                logger.warning("Escalated to SIGKILL pid=%s", pid)
             except ProcessLookupError:
                 pass  # Process vanished between checks.
 
             exited = self._wait_for_exit(ent.proc, 2.0)  # XXX TIMEOUT – short
 
         if not exited:
-            logger.error("Timed-out waiting for PID %s to exit", pid)
+            logger.error("event=stop_timeout pid=%s", pid)
             return StopProcessResult(error="timeout")
 
         # Process exited – record metadata.
@@ -301,6 +308,7 @@ class ProcessManager:  # noqa: D101
                 ent.exit_code = 0
             ent.exit_time = _get_iso_ts()
 
+        logger.debug("event=stopped pid=%s exit_code=%s", pid, ent.exit_code)
         return StopProcessResult(exit_code=ent.exit_code)
 
     def restart_process(self, pid: int) -> RestartProcessResult:  # noqa: D401
@@ -323,6 +331,8 @@ class ProcessManager:  # noqa: D101
             return RestartProcessResult(error=stop_res.error)
 
         start_res = self.start_process(cmd, working_directory=cwd, environment=env)
+
+        logger.debug("event=restart pid_old=%s pid_new=%s", pid, start_res.pid)
 
         return RestartProcessResult(pid=start_res.pid)
 
@@ -418,6 +428,12 @@ class ProcessManager:  # noqa: D101
                     ent.exit_time = _get_iso_ts()
                     ent.status = "exited" if code == 0 else "failed"
                     ent.proc = None
+                    logger.debug(
+                        "event=proc_exit pid=%s code=%s status=%s",
+                        ent.pid,
+                        code,
+                        ent.status,
+                    )
             time.sleep(_POLL_INTERVAL)
 
     # ------------------ signal helpers ------------------
