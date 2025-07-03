@@ -48,11 +48,38 @@ def cli():
         description="Process manager for multi-agent development workflows"
     )
 
+    # ---------------------------------------------------------------------
+    # Logging setup: we need to parse arguments *twice*. The first pass is
+    # with a minimal parser to extract only what's needed for logging, so
+    # that we can begin capturing messages ASAP.
+    # ---------------------------------------------------------------------
+    logging_parser = argparse.ArgumentParser(add_help=False)
+    logging_parser.add_argument("--data-dir", type=Path, default=get_default_data_dir())
+    logging_parser.add_argument("-v", "--verbose", action="count", default=0)
+    logging_args, remaining_argv = logging_parser.parse_known_args()
+
+    log_path = setup_logging(logging_args.verbose or 0, logging_args.data_dir)
+    cli_logger = logging.getLogger(CLI_LOGGER_NAME)
+
+    # ---------------------------------------------------------------------
+    # Main parser configuration
+    # ---------------------------------------------------------------------
+
     subparsers = parser.add_subparsers(dest="command")
 
     def add_common_args(parser):
-        parser.add_argument("--port", type=int, default=get_default_port())
-        parser.add_argument("--data-dir", type=Path, default=get_default_data_dir())
+        parser.add_argument(
+            "--port",
+            type=int,
+            default=get_default_port(),
+            help=f"Server port (default: {get_default_port()}; env: ${ENV_PORT})",
+        )
+        parser.add_argument(
+            "--data-dir",
+            type=Path,
+            default=get_default_data_dir(),
+            help=f"Data directory (default: {get_default_data_dir()}; env: ${ENV_DATA_DIR})",
+        )
         parser.add_argument(
             "-v",
             "--verbose",
@@ -92,86 +119,48 @@ def cli():
     add_common_args(p_run)
 
     process_manager = ProcessManager()
-    for tool in get_tools(process_manager):
+    tools = get_tools(process_manager)
+    tools_by_name = {tool.name: tool for tool in tools}
+    for tool in tools:
         p_tool = subparsers.add_parser(tool.name, help=tool.description)
+        add_common_args(p_tool)
         tool.build_subparser(p_tool)
-    tools_by_name = {tool.name: tool for tool in get_tools(process_manager)}
 
     # ---------------------------------------------------------------------
-    # Configure logging *before* doing anything substantial so that any
-    # subsequent code can rely on it.
+    # Parse arguments, handling implicit `run` and default `serve`
     # ---------------------------------------------------------------------
+    argv = sys.argv[1:]
+    if not argv:
+        # `persistproc` → `persistproc serve`
+        args = parser.parse_args(["serve"])
+    else:
+        # If the first non-flag argument isn't a known command, inject `run`.
+        # e.g. `persistproc my-script.py` → `persistproc run my-script.py`
+        first_positional = next((arg for arg in argv if not arg.startswith("-")), None)
 
-    # We'll run argument parsing twice: the first pass (here) **ignores**
-    # sub-command specific arguments so that we can extract *verbosity* and
-    # *data_dir* early.  This ensures that log messages emitted while
-    # building sub-parsers are still captured.
-    pre_parser = argparse.ArgumentParser(add_help=False)
-    pre_parser.add_argument("--data-dir", type=Path, default=get_default_data_dir())
-    pre_parser.add_argument("-v", "--verbose", action="count", default=0)
-    pre_args, _ = pre_parser.parse_known_args()
-
-    log_path = setup_logging(pre_args.verbose or 0, pre_args.data_dir)
-
-    cli_logger = logging.getLogger(CLI_LOGGER_NAME)
-
-    recognised_subcommands = {"serve", "run", *tools_by_name.keys()}
-
-    # ------------------------------------------------------------------
-    # Fast-path: if the first non-option argument is *not* a recognised
-    # sub-command, interpret it as an implicit `run` invocation **before** we
-    # call `parser.parse_args` (which would otherwise error-exit).
-    # ------------------------------------------------------------------
-
-    raw_argv = sys.argv[1:]
-    try:
-        first_pos = next(i for i, tok in enumerate(raw_argv) if not tok.startswith("-"))
-    except StopIteration:
-        # No positional arguments at all → fall back to full argparse parsing
-        first_pos = None
-
-    if first_pos is not None and raw_argv[first_pos] not in recognised_subcommands:
-        command = raw_argv[first_pos]
-        run_args = raw_argv[first_pos + 1 :]
-
-        # Apply the same heuristic used by the explicit `run` sub-command: if
-        # the *command* token itself contains spaces **and** no additional
-        # arguments were supplied, treat it as a quoted composite command and
-        # split it with *shlex.split*.
-        if " " in command and not run_args:
-            parts = shlex.split(command)
-            command = parts[0]
-            run_args = parts[1:]
-
-        cli_logger.info(
-            "(implicit run) Running command: %s %s", command, " ".join(run_args)
-        )
-
-        # Initialise ProcessManager now that *args.data_dir* is known.
-        process_manager.bootstrap(pre_args.data_dir, server_log_path=log_path)
-
-        run(command, run_args, pre_args.verbose, raw=False)
-        return  # done
+        # `persistproc --port=...` -> `persistproc serve --port=...`
+        if first_positional is None:
+            # Only flags are present, assume `serve`
+            argv.insert(0, "serve")
+        elif first_positional not in subparsers.choices:
+            # Find the position of the first positional argument to insert `run` before it
+            insert_at = argv.index(first_positional)
+            argv.insert(insert_at, "run")
+        args = parser.parse_args(argv)
 
     # ------------------------------------------------------------------
-    # Normal code-path – parse the full CLI grammar.
+    # Command dispatch
     # ------------------------------------------------------------------
-
-    args = parser.parse_args()
 
     # Inform user where the detailed log file is written.
     cli_logger.info("Verbose log written to %s", log_path)
 
-    # Initialise ProcessManager now that *args.data_dir* is known.
-    process_manager.bootstrap(args.data_dir, server_log_path=log_path)
-
+    # Initialise ProcessManager *only* for commands that use it directly
+    # (`serve`). Tool calls connect to a server instead.
     if args.command == "serve":
+        process_manager.bootstrap(args.data_dir, server_log_path=log_path)
         cli_logger.info("Starting server on port %d", args.port)
-        serve(
-            args.port,
-            args.verbose,
-            process_manager=process_manager,
-        )
+        serve(args.port, args.verbose, process_manager=process_manager)
     elif args.command == "run":
         if " " in args.program and not args.args:
             parts = shlex.split(args.program)

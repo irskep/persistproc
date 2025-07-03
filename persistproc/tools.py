@@ -4,9 +4,12 @@ from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
 from typing import Any, Callable
 from pathlib import Path
+import json
+import asyncio
 
 from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool
+from fastmcp.client import Client
 
 from persistproc.process_manager import ProcessManager
 
@@ -23,6 +26,45 @@ from .process_types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _make_mcp_request(tool_name: str, port: int, payload: dict | None = None) -> None:
+    """Make a request to the MCP server and print the response."""
+    payload = payload or {}
+    mcp_url = f"http://127.0.0.1:{port}/mcp/"
+
+    async def _do_call() -> None:
+        async with Client(mcp_url, timeout=30) as client:
+            # Filter out None values from payload before sending
+            json_payload = {k: v for k, v in payload.items() if v is not None}
+            results = await client.call_tool(tool_name, json_payload)
+
+            if not results:
+                logger.error("No response from server for tool '%s'", tool_name)
+                return
+
+            # Result is a JSON string in the `text` attribute.
+            result_data = json.loads(results[0].text)
+            if result_data.get("error"):
+                logger.error(
+                    "Error calling '%s' tool on server: %s",
+                    tool_name,
+                    result_data["error"],
+                )
+            else:
+                print(json.dumps(result_data, indent=2))
+
+    try:
+        asyncio.run(_do_call())
+    except ConnectionError:
+        logger.error(
+            f"Connection to MCP server failed on port {port}. Is the server running?"
+        )
+        logger.error("  (command: `persistproc serve`)")
+    except Exception as e:
+        logger.error(
+            f"An unexpected error occurred while calling tool '{tool_name}': {e}"
+        )
 
 
 @dataclass
@@ -80,15 +122,20 @@ def build_start_process_tool(
             help="Environment variables to set for the process, in KEY=VALUE format.",
         )
 
-    def call_with_args(args: Namespace) -> StartProcessResult:
+    def call_with_args(args: Namespace) -> None:
         env = None
         if args.environment:
             env = dict(item.split("=", 1) for item in args.environment)
 
-        return start_process(
-            command=args.command,
-            working_directory=args.working_directory,
-            environment=env,
+        payload = {
+            "command": args.command,
+            "working_directory": args.working_directory,
+            "environment": env,
+        }
+        _make_mcp_request(
+            "start_process",
+            args.port,
+            payload,
         )
 
     return Tool(
@@ -121,8 +168,8 @@ def build_list_processes_tool(
     def build_subparser(parser: ArgumentParser) -> None:
         pass
 
-    def call_with_args(args: Namespace) -> ListProcessesResult:
-        return list_processes()
+    def call_with_args(args: Namespace) -> None:
+        _make_mcp_request("list_processes", args.port)
 
     return Tool(
         call=list_processes,
@@ -154,8 +201,8 @@ def build_get_process_status_tool(
     def build_subparser(parser: ArgumentParser) -> None:
         parser.add_argument("pid", type=int, help="The process ID.")
 
-    def call_with_args(args: Namespace) -> ProcessStatusResult:
-        return get_process_status(pid=args.pid)
+    def call_with_args(args: Namespace) -> None:
+        _make_mcp_request("get_process_status", args.port, {"pid": args.pid})
 
     return Tool(
         call=get_process_status,
@@ -190,8 +237,10 @@ def build_stop_process_tool(
             "--force", action="store_true", help="Force stop the process."
         )
 
-    def call_with_args(args: Namespace) -> StopProcessResult:
-        return stop_process(pid=args.pid, force=args.force)
+    def call_with_args(args: Namespace) -> None:
+        _make_mcp_request(
+            "stop_process", args.port, {"pid": args.pid, "force": args.force}
+        )
 
     return Tool(
         call=stop_process,
@@ -223,8 +272,8 @@ def build_restart_process_tool(
     def build_subparser(parser: ArgumentParser) -> None:
         parser.add_argument("pid", type=int, help="The process ID.")
 
-    def call_with_args(args: Namespace) -> RestartProcessResult:
-        return restart_process(pid=args.pid)
+    def call_with_args(args: Namespace) -> None:
+        _make_mcp_request("restart_process", args.port, {"pid": args.pid})
 
     return Tool(
         call=restart_process,
@@ -279,14 +328,15 @@ def build_get_process_output_tool(
         )
         parser.add_argument("--since-time", help="Retrieve logs since this timestamp.")
 
-    def call_with_args(args: Namespace) -> ProcessOutputResult:
-        return get_process_output(
-            pid=args.pid,
-            stream=args.stream,
-            lines=args.lines,
-            before_time=args.before_time,
-            since_time=args.since_time,
-        )
+    def call_with_args(args: Namespace) -> None:
+        payload = {
+            "pid": args.pid,
+            "stream": args.stream,
+            "lines": args.lines,
+            "before_time": args.before_time,
+            "since_time": args.since_time,
+        }
+        _make_mcp_request("get_process_output", args.port, payload)
 
     return Tool(
         call=get_process_output,
@@ -318,8 +368,8 @@ def build_get_process_log_paths_tool(
     def build_subparser(parser: ArgumentParser) -> None:
         parser.add_argument("pid", type=int, help="The process ID.")
 
-    def call_with_args(args: Namespace) -> ProcessLogPathsResult:
-        return get_process_log_paths(pid=args.pid)
+    def call_with_args(args: Namespace) -> None:
+        _make_mcp_request("get_process_log_paths", args.port, {"pid": args.pid})
 
     return Tool(
         call=get_process_log_paths,
