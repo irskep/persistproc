@@ -73,6 +73,17 @@ def cli():
         help="The program to run (e.g. 'python' or 'ls'). If the string contains spaces, it will be shell-split unless additional arguments are provided separately.",
     )
     p_run.add_argument("args", nargs="*", help="Arguments to the program")
+    p_run.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Stop an existing running instance of the same command before starting a new one.",
+    )
+    p_run.add_argument(
+        "--on-exit",
+        choices=["ask", "stop", "detach"],
+        default="ask",
+        help="Behaviour when you press Ctrl+C: ask (default), stop the process, or detach and leave it running.",
+    )
     add_common_args(p_run)
 
     process_manager = ProcessManager()
@@ -151,7 +162,11 @@ def cli():
 
     if args.command == "serve":
         cli_logger.info("Starting server on port %d", args.port)
-        serve(args.port, args.verbose)
+        serve(
+            args.port,
+            args.verbose,
+            process_manager=process_manager,
+        )
     elif args.command == "run":
         if " " in args.program and not args.args:
             parts = shlex.split(args.program)
@@ -161,7 +176,13 @@ def cli():
             command = args.program
             run_args = args.args
         cli_logger.info("Running command: %s %s", command, " ".join(run_args))
-        run(command, run_args, args.verbose)
+        run(
+            command,
+            run_args,
+            args.verbose,
+            fresh=args.fresh,
+            on_exit=args.on_exit,
+        )
     elif args.command in tools_by_name:
         tool = tools_by_name[args.command]
         tool.call_with_args(args)
