@@ -172,9 +172,12 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
     # Tool commands
     tools = [tool_cls() for tool_cls in ALL_TOOL_CLASSES]
     tools_by_name = {tool.name: tool for tool in tools}
+    tools_by_name.update(
+        {name.replace("_", "-"): tool for name, tool in tools_by_name.items()}
+    )
     for tool in tools:
         p_tool = subparsers.add_parser(
-            tool.name, help=tool.description, parents=[common_parser]
+            tool.name.replace("_", "-"), help=tool.description, parents=[common_parser]
         )
         tool.build_subparser(p_tool)
 
@@ -223,9 +226,15 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
             first_cmd = token
             break
 
+        # Special-case: help flag with no explicit command – display top-level
+        # help (listing all sub-commands) instead of defaulting to `serve`.
         if first_cmd is None:
-            # Only global flags were provided (or none). Assume `serve`.
-            args = parser.parse_args(["serve"] + argv)
+            if any(flag in argv for flag in ("-h", "--help")):
+                # argparse will handle printing help/exit.
+                args = parser.parse_args(argv)
+            else:
+                # Only global flags were provided (or none). Assume `serve`.
+                args = parser.parse_args(["serve"] + argv)
         elif first_cmd in subparsers.choices:
             # Explicit command provided.
             args = parser.parse_args(argv)
@@ -268,6 +277,10 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
             verbose=verbose_val,
         )
     elif args.command in tools_by_name:
+        # Ensure tool sub-commands always have a `port` attribute so
+        # downstream code doesn't crash when the user omitted --port.
+        if not hasattr(args, "port"):
+            setattr(args, "port", port_val)
         action = ToolAction(args=args)
     else:
         parser.print_help()
@@ -299,6 +312,9 @@ def handle_cli_action(action: CLIAction, log_path: Path) -> None:
     elif isinstance(action, ToolAction):
         tools = [tool_cls() for tool_cls in ALL_TOOL_CLASSES]
         tools_by_name = {tool.name: tool for tool in tools}
+        tools_by_name.update(
+            {name.replace("_", "-"): tool for name, tool in tools_by_name.items()}
+        )
         tool = tools_by_name[action.args.command]
         tool.call_with_args(action.args)
 

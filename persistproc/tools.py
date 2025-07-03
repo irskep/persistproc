@@ -6,14 +6,13 @@ from typing import Any, Callable
 from pathlib import Path
 import json
 import asyncio
+import logging
 
 from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool
 from fastmcp.client import Client
 
 from persistproc.process_manager import ProcessManager
-
-import logging
 
 from .process_types import (
     ListProcessesResult,
@@ -39,31 +38,44 @@ def _make_mcp_request(tool_name: str, port: int, payload: dict | None = None) ->
             json_payload = {k: v for k, v in payload.items() if v is not None}
             results = await client.call_tool(tool_name, json_payload)
 
+            cli_logger = logging.getLogger("persistproc.cli")
+
             if not results:
-                logger.error("No response from server for tool '%s'", tool_name)
+                cli_logger.error(
+                    "No response from server for tool '%s'. Is the server running?",
+                    tool_name,
+                )
                 return
 
             # Result is a JSON string in the `text` attribute.
             result_data = json.loads(results[0].text)
             if result_data.get("error"):
-                logger.error(
-                    "Error calling '%s' tool on server: %s",
-                    tool_name,
-                    result_data["error"],
-                )
-            else:
-                print(json.dumps(result_data, indent=2))
+                cli_logger.error(result_data["error"])
+                return
+
+            # Special human-friendly output for common empty cases.
+            if tool_name == "list_processes":
+                procs = result_data.get("processes", [])
+                if not procs:
+                    cli_logger.info("No processes running.")
+                    return
+
+            # Pretty-print JSON for non-empty results.
+            cli_logger.info(json.dumps(result_data, indent=2))
 
     try:
         asyncio.run(_do_call())
     except ConnectionError:
-        logger.error(
-            f"Connection to MCP server failed on port {port}. Is the server running?"
+        logging.getLogger("persistproc.cli").error(
+            "Cannot connect to persistproc server on port %d. Start it with 'persistproc serve'.",
+            port,
         )
-        logger.error("  (command: `persistproc serve`)")
     except Exception as e:
-        logger.error(
-            f"An unexpected error occurred while calling tool '{tool_name}': {e}"
+        cli_logger = logging.getLogger("persistproc.cli")
+        cli_logger.error("Unexpected error while calling tool '%s': %s", tool_name, e)
+        cli_logger.error(
+            "Cannot reach persistproc server on port %d. Make sure it is running (`persistproc serve`) or specify the correct port with --port or PERSISTPROC_PORT.",
+            port,
         )
 
 

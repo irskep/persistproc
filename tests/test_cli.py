@@ -2,6 +2,8 @@ import pytest
 from unittest.mock import patch
 from pathlib import Path
 from argparse import Namespace
+import subprocess
+import sys
 
 from persistproc.cli import (
     parse_cli,
@@ -100,3 +102,14 @@ def test_parse_cli_data_dir_and_verbose_for_logging(mock_setup_logging):
     data_dir = Path("/custom/data")
     parse_cli(["serve", "--data-dir", str(data_dir), "-vvv"])
     mock_setup_logging.assert_called_with(3, data_dir)
+
+
+def test_root_help_displays_subcommands():
+    """`persistproc --help` lists available sub-commands (serve, run, etc.)."""
+    cmd = [sys.executable, "-m", "persistproc", "--help"]
+    proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+
+    # Exit code 0 and key sub-commands in help output.
+    assert proc.returncode == 0, proc.stderr
+    assert "serve" in proc.stdout
+    assert "list-processes" in proc.stdout or "list_processes" in proc.stdout
