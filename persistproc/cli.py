@@ -82,7 +82,7 @@ def cli():
     cli_logger.info("Verbose log written to %s", log_path)
 
     # Initialise ProcessManager now that *args.data_dir* is known.
-    process_manager.bootstrap(args.data_dir)
+    process_manager.bootstrap(args.data_dir, server_log_path=log_path)
 
     if args.command == "serve":
         cli_logger.info("Starting server on port %d", args.port)

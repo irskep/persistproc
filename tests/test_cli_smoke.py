@@ -66,22 +66,24 @@ def _wait_for_log_line(
 # -----------------------------------------------------------------------------
 
 
-def test_list_processes_generates_debug_log(tmp_path: Path):
-    """Running the *list_processes* CLI writes a DEBUG log entry."""
+def test_serve_command_writes_startup_log(tmp_path: Path):
+    """`persistproc serve` should emit a startup INFO log entry."""
 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
 
-    # The ProcessManager stub should return successfully.
-    result = _run_cli(data_dir, "list_processes")
+    # The serve stub returns immediately.
+    result = _run_cli(data_dir, "serve", "--port", "9999")
 
     assert result.returncode == 0, result.stderr
 
-    # The stubbed implementation logs "[stub] list_processes" at DEBUG level.
-    matched_line = _wait_for_log_line(data_dir, r"\[stub\] list_processes")
+    # Confirm the expected log entry is written.
+    matched_line = _wait_for_log_line(
+        data_dir,
+        r"Starting MCP server on http://127\.0\.0\.1:9999",
+    )
 
-    # Basic sanity check on the captured line.
-    assert "list_processes" in matched_line
+    assert "MCP server" in matched_line
 
 
 # -----------------------------------------------------------------------------

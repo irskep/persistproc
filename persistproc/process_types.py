@@ -17,6 +17,7 @@ __all__ = [
     "ProcessStatusResult",
     "ProcessOutputResult",
     "ProcessLogPathsResult",
+    "RestartProcessResult",
 ]
 
 
@@ -27,7 +28,15 @@ class StartProcessResult:
 
 @dataclass
 class StopProcessResult:
-    exit_code: int
+    """Result of a stop_process call.
+
+    * ``exit_code`` is ``None`` when the target process could not be
+    terminated (e.g. after SIGKILL timeout).  ``error`` then contains a short
+    reason string suitable for logging or displaying to a user.
+    """
+
+    exit_code: int | None = None
+    error: str | None = None
 
 
 @dataclass
@@ -60,3 +69,14 @@ class ProcessOutputResult:
 class ProcessLogPathsResult:
     stdout: str
     stderr: str
+
+
+@dataclass
+class RestartProcessResult:
+    """Outcome of a restart operation.
+
+    Either *pid* is set (success) or *error* is populated.
+    """
+
+    pid: int | None = None
+    error: str | None = None

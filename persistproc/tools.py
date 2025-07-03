@@ -19,6 +19,7 @@ from .process_types import (
     ProcessStatusResult,
     StartProcessResult,
     StopProcessResult,
+    RestartProcessResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -205,10 +206,10 @@ def build_restart_process_tool(
 ) -> Tool:
     """Builds the restart_process tool and its registration function."""
 
-    def restart_process(pid: int) -> None:
+    def restart_process(pid: int) -> RestartProcessResult:
         """Stops a process and starts it again with the same parameters."""
         logger.info("restart_process called for pid=%s", pid)
-        process_manager.restart_process(pid)
+        return process_manager.restart_process(pid)
 
     def register_tool(mcp: FastMCP) -> None:
         """Registers the tool with a FastMCP instance."""
@@ -222,7 +223,7 @@ def build_restart_process_tool(
     def build_subparser(parser: ArgumentParser) -> None:
         parser.add_argument("pid", type=int, help="The process ID.")
 
-    def call_with_args(args: Namespace) -> None:
+    def call_with_args(args: Namespace) -> RestartProcessResult:
         return restart_process(pid=args.pid)
 
     return Tool(
