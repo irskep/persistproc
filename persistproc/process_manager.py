@@ -265,6 +265,7 @@ class ProcessManager:  # noqa: D101
     def get_process_status(self, pid: int) -> ProcessStatusResult:  # noqa: D401
         with self._lock:
             ent = self._require(pid)
+        logger.debug("event=get_process_status pid=%s status=%s", pid, ent.status)
         return ProcessStatusResult(
             pid=ent.pid,
             command=ent.command,
@@ -417,6 +418,7 @@ class ProcessManager:  # noqa: D101
 
     def _monitor_loop(self) -> None:  # noqa: D401 – thread target
         while not self._stop_evt.is_set():
+            logger.debug("event=monitor_tick_start num_procs=%s", len(self._processes))
             with self._lock:
                 running = [e for e in self._processes.values() if e.status == "running"]
             for ent in running:
@@ -435,6 +437,7 @@ class ProcessManager:  # noqa: D101
                         ent.status,
                     )
             time.sleep(_POLL_INTERVAL)
+            logger.debug("event=monitor_tick_end")
 
     # ------------------ signal helpers ------------------
 
@@ -452,8 +455,19 @@ class ProcessManager:  # noqa: D101
     ) -> bool:  # noqa: D401
         if proc is None:
             return True
+        logger.debug(
+            "event=wait_for_exit pid=%s timeout=%s", getattr(proc, "pid", None), timeout
+        )
         try:
             proc.wait(timeout=timeout)
+            logger.debug(
+                "event=wait_for_exit_done pid=%s exited=True",
+                getattr(proc, "pid", None),
+            )
             return True
         except subprocess.TimeoutExpired:
+            logger.debug(
+                "event=wait_for_exit_done pid=%s exited=False",
+                getattr(proc, "pid", None),
+            )
             return False

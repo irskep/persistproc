@@ -16,3 +16,4 @@ coverage.xml
 +.coverage_data/
 /site
 /fastmcp
+/tests/_artifacts

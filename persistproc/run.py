@@ -1,44 +1,23 @@
 from __future__ import annotations
 
-import logging
-import subprocess
-import sys
 from typing import Sequence
 
 
 def run(command: str, args: Sequence[str], verbose: int = 0) -> None:  # noqa: D401
-    """Run *command* with *args* and stream its output to the console.
-
-    This is *not* the long-running, managed execution path used by
-    :pyclass:`~persistproc.process_manager.ProcessManager`.  It is a thin
-    convenience wrapper that blocks until the command exits, intended for
-    parity with the former CLI implementation until full functionality is
-    restored.
     """
+    Communicate with the persistproc server to ensure a command
+    is running, and tail its stdout+stderr output on stdout.
 
-    logger = logging.getLogger("persistproc.cli")
-
-    try:
-        process = subprocess.Popen(
-            [command, *args]
-        )  # noqa: S603 – user-supplied command
-    except FileNotFoundError:
-        logger.error("Command not found: %s", command)
-        sys.exit(127)
-    except Exception as exc:  # pragma: no cover – safeguard
-        logger.exception("Failed to start %s: %s", command, exc)
-        sys.exit(1)
-
-    logger.info("Process started (PID %s)", process.pid)
-
-    try:
-        return_code = process.wait()
-    except KeyboardInterrupt:
-        logger.info("Interrupted by user – terminating …")
-        process.terminate()
-        return_code = process.wait()
-
-    if return_code == 0:
-        logger.info("Process exited successfully")
-    else:
-        logger.warning("Process exited with code %s", return_code)
+    This is equivalent to:
+    - persistproc start <command>, except if the command is already
+      running, it gets left alone
+    - get the combined log path for the running command
+    - tail -f <combined log path>
+    - on ctrl+c, depending on the value of --on-exit:
+      - ask: y/n to stop the command or leave it running
+      - stop
+      - ignore
+    """
+    # TODO: instantiate an MCP client and use it to talk to the MCP server
+    # which is already running via persistproc --serve.
+    # implementing may require adding options to tools like start_process().

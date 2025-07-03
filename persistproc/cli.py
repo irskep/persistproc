@@ -48,8 +48,11 @@ def cli():
         "run",
         help="Make sure a process is running and tail its output (stdout and stderr) to stdout",
     )
-    p_run.add_argument("command", help="The command to run")
-    p_run.add_argument("args", nargs="*", help="Arguments to the command")
+    p_run.add_argument(
+        "program",
+        help="The program to run (e.g. 'python' or 'ls'). If the string contains spaces, it will be shell-split unless additional arguments are provided separately.",
+    )
+    p_run.add_argument("args", nargs="*", help="Arguments to the program")
     add_common_args(p_run)
 
     process_manager = ProcessManager()
@@ -76,6 +79,48 @@ def cli():
 
     cli_logger = logging.getLogger(CLI_LOGGER_NAME)
 
+    recognised_subcommands = {"serve", "run", *tools_by_name.keys()}
+
+    # ------------------------------------------------------------------
+    # Fast-path: if the first non-option argument is *not* a recognised
+    # sub-command, interpret it as an implicit `run` invocation **before** we
+    # call `parser.parse_args` (which would otherwise error-exit).
+    # ------------------------------------------------------------------
+
+    raw_argv = sys.argv[1:]
+    try:
+        first_pos = next(i for i, tok in enumerate(raw_argv) if not tok.startswith("-"))
+    except StopIteration:
+        # No positional arguments at all → fall back to full argparse parsing
+        first_pos = None
+
+    if first_pos is not None and raw_argv[first_pos] not in recognised_subcommands:
+        command = raw_argv[first_pos]
+        run_args = raw_argv[first_pos + 1 :]
+
+        # Apply the same heuristic used by the explicit `run` sub-command: if
+        # the *command* token itself contains spaces **and** no additional
+        # arguments were supplied, treat it as a quoted composite command and
+        # split it with *shlex.split*.
+        if " " in command and not run_args:
+            parts = shlex.split(command)
+            command = parts[0]
+            run_args = parts[1:]
+
+        cli_logger.info(
+            "(implicit run) Running command: %s %s", command, " ".join(run_args)
+        )
+
+        # Initialise ProcessManager now that *args.data_dir* is known.
+        process_manager.bootstrap(pre_args.data_dir, server_log_path=log_path)
+
+        run(command, run_args, pre_args.verbose)
+        return  # done
+
+    # ------------------------------------------------------------------
+    # Normal code-path – parse the full CLI grammar.
+    # ------------------------------------------------------------------
+
     args = parser.parse_args()
 
     # Inform user where the detailed log file is written.
@@ -88,12 +133,12 @@ def cli():
         cli_logger.info("Starting server on port %d", args.port)
         serve(args.port, args.verbose)
     elif args.command == "run":
-        if " " in args.command and not args.args:
-            parts = shlex.split(args.command)
+        if " " in args.program and not args.args:
+            parts = shlex.split(args.program)
             command = parts[0]
             run_args = parts[1:]
         else:
-            command = args.command
+            command = args.program
             run_args = args.args
         cli_logger.info("Running command: %s %s", command, " ".join(run_args))
         run(command, run_args, args.verbose)
@@ -102,3 +147,5 @@ def cli():
         tool.call_with_args(args)
     else:
         parser.print_help()
+
+    # End of CLI dispatch
