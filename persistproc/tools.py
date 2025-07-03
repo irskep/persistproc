@@ -1,125 +1,376 @@
-"""
-MCP tool implementations.
+from __future__ import annotations
 
-This module contains all the MCP tool functions that are exposed
-by the persistproc server.
-"""
+from argparse import ArgumentParser, Namespace
+from dataclasses import dataclass
+from typing import Any, Callable
 
-import json
+from fastmcp import FastMCP
+from fastmcp.tools import FunctionTool
+
+from persistproc.process_manager import ProcessManager
+
 import logging
 
-logger = logging.getLogger("persistproc")
+logger = logging.getLogger(__name__)
 
 
-def create_tools(app, process_manager):
-    """Register all MCP tools with the FastMCP app."""
+@dataclass
+class Tool:
+    call: Callable[..., Any]
+    register_tool: Callable[[FastMCP], None]
+    build_subparser: Callable[[ArgumentParser], None]
+    call_with_args: Callable[[Namespace], Any]
 
-    @app.tool()
+    @property
+    def name(self) -> str:  # noqa: D401 – simple property
+        return self.call.__name__
+
+    @property
+    def description(self) -> str:  # noqa: D401 – simple property
+        doc = self.call.__doc__ or ""
+        return doc.strip()
+
+
+@dataclass
+class StartProcessResult:
+    pid: int
+
+
+@dataclass
+class StopProcessResult:
+    exit_code: int
+
+
+@dataclass
+class ProcessInfo:
+    pid: int
+    command: list[str]
+    working_directory: str
+    status: str
+
+
+@dataclass
+class ListProcessesResult:
+    processes: list[ProcessInfo]
+
+
+@dataclass
+class ProcessStatusResult:
+    pid: int
+    command: list[str]
+    working_directory: str
+    status: str
+
+
+@dataclass
+class ProcessOutputResult:
+    output: list[str]
+
+
+@dataclass
+class ProcessLogPathsResult:
+    stdout: str
+    stderr: str
+
+
+def build_start_process_tool(
+    process_manager: ProcessManager,
+) -> Tool:
     def start_process(
-        command: str, working_directory: str = None, environment: dict = None
-    ) -> str:
+        command: str,
+        working_directory: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> StartProcessResult:
+        # this is the help string for the command line (shorter)
         """Start a new long-running process."""
-        logger.debug(f"start_process called with command: {command}")
-        try:
-            result = process_manager.start_process(
-                command, working_directory, environment
-            )
-            logger.debug(f"start_process result: {result}")
-            return json.dumps(result, indent=2)
-        except (ValueError, RuntimeError) as e:
-            logger.error(f"start_process error: {e}")
-            return json.dumps({"error": str(e)})
+        logger.info("start_process called – cmd=%s, cwd=%s", command, working_directory)
+        return StartProcessResult(pid=0)
 
-    @app.tool()
-    def stop_process(pid: int, force: bool = False) -> str:
-        """Stop a running process by its PID."""
-        logger.debug(f"stop_process called with pid: {pid}, force: {force}")
-        try:
-            result = process_manager.stop_process(pid, force)
-            return json.dumps(result, indent=2)
-        except (ValueError, RuntimeError) as e:
-            return json.dumps({"error": str(e)})
+    def register_tool(mcp: FastMCP) -> None:
+        """Registers the tool with a FastMCP instance."""
+        tool = FunctionTool.from_function(
+            start_process,
+            name="start_process",
+            # this is the prompt for the LLM (longer)
+            description="Start a new long-running process. REQUIRED if the process is expected to never terminate. PROHIBITED if the process is short-lived.",
+        )
+        mcp.add_tool(tool)
 
-    @app.tool()
-    def list_processes() -> str:
+    def build_subparser(parser: ArgumentParser) -> None:
+        parser.add_argument("command", help="The command to run.")
+        parser.add_argument(
+            "--working-directory", help="The working directory for the process."
+        )
+        parser.add_argument(
+            "--environment",
+            nargs="*",
+            help="Environment variables to set for the process, in KEY=VALUE format.",
+        )
+
+    def call_with_args(args: Namespace) -> StartProcessResult:
+        env = None
+        if args.environment:
+            env = dict(item.split("=", 1) for item in args.environment)
+
+        return start_process(
+            command=args.command,
+            working_directory=args.working_directory,
+            environment=env,
+        )
+
+    return Tool(
+        call=start_process,
+        register_tool=register_tool,
+        build_subparser=build_subparser,
+        call_with_args=call_with_args,
+    )
+
+
+def build_list_processes_tool(
+    process_manager: ProcessManager,
+) -> Tool:
+    """Builds the list_processes tool and its registration function."""
+
+    def list_processes() -> ListProcessesResult:
         """List all managed processes and their status."""
         logger.debug("list_processes called")
-        try:
-            result = process_manager.list_processes()
-            return json.dumps(result, indent=2)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+        return ListProcessesResult(processes=[])
 
-    @app.tool()
-    def get_process_status(pid: int) -> str:
+    def register_tool(mcp: FastMCP) -> None:
+        """Registers the tool with a FastMCP instance."""
+        tool = FunctionTool.from_function(
+            list_processes,
+            name="list_processes",
+            description="List all managed processes and their status.",
+        )
+        mcp.add_tool(tool)
+
+    def build_subparser(parser: ArgumentParser) -> None:
+        pass
+
+    def call_with_args(args: Namespace) -> ListProcessesResult:
+        return list_processes()
+
+    return Tool(
+        call=list_processes,
+        register_tool=register_tool,
+        build_subparser=build_subparser,
+        call_with_args=call_with_args,
+    )
+
+
+def build_get_process_status_tool(
+    process_manager: ProcessManager,
+) -> Tool:
+    """Builds the get_process_status tool and its registration function."""
+
+    def get_process_status(pid: int) -> ProcessStatusResult:
         """Get the detailed status of a specific process."""
-        logger.debug(f"get_process_status called with pid: {pid}")
-        try:
-            result = process_manager.get_process_status(pid)
-            return json.dumps(result, indent=2)
-        except (ValueError, RuntimeError) as e:
-            return json.dumps({"error": str(e)})
+        logger.debug("get_process_status called for pid=%s", pid)
+        return ProcessStatusResult(
+            pid=pid,
+            command=["not", "implemented"],
+            working_directory="/tmp",
+            status="unknown",
+        )
 
-    @app.tool()
+    def register_tool(mcp: FastMCP) -> None:
+        """Registers the tool with a FastMCP instance."""
+        tool = FunctionTool.from_function(
+            get_process_status,
+            name="get_process_status",
+            description="Get the detailed status of a specific process.",
+        )
+        mcp.add_tool(tool)
+
+    def build_subparser(parser: ArgumentParser) -> None:
+        parser.add_argument("pid", type=int, help="The process ID.")
+
+    def call_with_args(args: Namespace) -> ProcessStatusResult:
+        return get_process_status(pid=args.pid)
+
+    return Tool(
+        call=get_process_status,
+        register_tool=register_tool,
+        build_subparser=build_subparser,
+        call_with_args=call_with_args,
+    )
+
+
+def build_stop_process_tool(
+    process_manager: ProcessManager,
+) -> Tool:
+    """Builds the stop_process tool and its registration function."""
+
+    def stop_process(pid: int, force: bool = False) -> StopProcessResult:
+        """Stop a running process by its PID."""
+        logger.info("stop_process called for pid=%s force=%s", pid, force)
+        return StopProcessResult(exit_code=0)
+
+    def register_tool(mcp: FastMCP) -> None:
+        """Registers the tool with a FastMCP instance."""
+        tool = FunctionTool.from_function(
+            stop_process,
+            name="stop_process",
+            description="Stop a running process by its PID.",
+        )
+        mcp.add_tool(tool)
+
+    def build_subparser(parser: ArgumentParser) -> None:
+        parser.add_argument("pid", type=int, help="The process ID.")
+        parser.add_argument(
+            "--force", action="store_true", help="Force stop the process."
+        )
+
+    def call_with_args(args: Namespace) -> StopProcessResult:
+        return stop_process(pid=args.pid, force=args.force)
+
+    return Tool(
+        call=stop_process,
+        register_tool=register_tool,
+        build_subparser=build_subparser,
+        call_with_args=call_with_args,
+    )
+
+
+def build_restart_process_tool(
+    process_manager: ProcessManager,
+) -> Tool:
+    """Builds the restart_process tool and its registration function."""
+
+    def restart_process(pid: int) -> None:
+        """Stops a process and starts it again with the same parameters."""
+        logger.info("restart_process called for pid=%s", pid)
+        # TODO: implement restart logic
+
+    def register_tool(mcp: FastMCP) -> None:
+        """Registers the tool with a FastMCP instance."""
+        tool = FunctionTool.from_function(
+            restart_process,
+            name="restart_process",
+            description="Stops a process and starts it again with the same parameters.",
+        )
+        mcp.add_tool(tool)
+
+    def build_subparser(parser: ArgumentParser) -> None:
+        parser.add_argument("pid", type=int, help="The process ID.")
+
+    def call_with_args(args: Namespace) -> None:
+        return restart_process(pid=args.pid)
+
+    return Tool(
+        call=restart_process,
+        register_tool=register_tool,
+        build_subparser=build_subparser,
+        call_with_args=call_with_args,
+    )
+
+
+def build_get_process_output_tool(
+    process_manager: ProcessManager,
+) -> Tool:
+    """Builds the get_process_output tool and its registration function."""
+
     def get_process_output(
         pid: int,
         stream: str,
-        lines: int = None,
-        before_time: str = None,
-        since_time: str = None,
-    ) -> str:
-        """
-        Retrieve captured output from a process.
-        Can fetch the last N lines, and/or lines before/since a given ISO8601 timestamp.
-        Use PID 0 to retrieve the main persistproc server log; the 'stream' parameter is ignored in this case.
-        """
+        lines: int | None = None,
+        before_time: str | None = None,
+        since_time: str | None = None,
+    ) -> ProcessOutputResult:
+        """Retrieve captured output from a process."""
         logger.debug(
-            f"get_process_output called with pid: {pid}, stream: {stream}, lines: {lines}, before_time: {before_time}, since_time: {since_time}"
+            "get_process_output called pid=%s stream=%s lines=%s before=%s since=%s",
+            pid,
+            stream,
+            lines,
+            before_time,
+            since_time,
         )
-        try:
-            result = process_manager.get_process_output(
-                pid, stream, lines, before_time, since_time
-            )
-            return json.dumps(result, indent=2)
-        except (ValueError, RuntimeError) as e:
-            return json.dumps({"error": str(e)})
+        return ProcessOutputResult(output=[])
 
-    @app.tool()
-    def get_process_log_paths(pid: int) -> str:
+    def register_tool(mcp: FastMCP) -> None:
+        """Registers the tool with a FastMCP instance."""
+        tool = FunctionTool.from_function(
+            get_process_output,
+            name="get_process_output",
+            description="Retrieve captured output from a process.",
+        )
+        mcp.add_tool(tool)
+
+    def build_subparser(parser: ArgumentParser) -> None:
+        parser.add_argument("pid", type=int, help="The process ID.")
+        parser.add_argument(
+            "stream", choices=["stdout", "stderr"], help="The output stream to read."
+        )
+        parser.add_argument(
+            "--lines", type=int, help="The number of lines to retrieve."
+        )
+        parser.add_argument(
+            "--before-time", help="Retrieve logs before this timestamp."
+        )
+        parser.add_argument("--since-time", help="Retrieve logs since this timestamp.")
+
+    def call_with_args(args: Namespace) -> ProcessOutputResult:
+        return get_process_output(
+            pid=args.pid,
+            stream=args.stream,
+            lines=args.lines,
+            before_time=args.before_time,
+            since_time=args.since_time,
+        )
+
+    return Tool(
+        call=get_process_output,
+        register_tool=register_tool,
+        build_subparser=build_subparser,
+        call_with_args=call_with_args,
+    )
+
+
+def build_get_process_log_paths_tool(
+    process_manager: ProcessManager,
+) -> Tool:
+    """Builds the get_process_log_paths tool and its registration function."""
+
+    def get_process_log_paths(pid: int) -> ProcessLogPathsResult:
         """Get the paths to the log files for a specific process."""
-        logger.debug(f"get_process_log_paths called with pid: {pid}")
-        try:
-            with process_manager.lock:
-                p_info = process_manager.processes.get(pid)
-            if not p_info:
-                raise ValueError(f"Process with PID {pid} not found.")
+        logger.debug("get_process_log_paths called for pid=%s", pid)
+        return ProcessLogPathsResult(stdout="", stderr="")
 
-            log_paths = process_manager.log_manager.get_log_paths(p_info.log_prefix)
-            # convert Path objects to strings for JSON serialization
-            str_log_paths = {k: str(v) for k, v in log_paths.items()}
-            return json.dumps(str_log_paths, indent=2)
-        except (ValueError, RuntimeError) as e:
-            return json.dumps({"error": str(e)})
+    def register_tool(mcp: FastMCP) -> None:
+        """Registers the tool with a FastMCP instance."""
+        tool = FunctionTool.from_function(
+            get_process_log_paths,
+            name="get_process_log_paths",
+            description="Get the paths to the log files for a specific process.",
+        )
+        mcp.add_tool(tool)
 
-    @app.tool()
-    def restart_process(pid: int) -> str:
-        """Stops a process and starts it again with the same parameters."""
-        logger.debug(f"restart_process called with pid: {pid}")
-        try:
-            # Get old process info
-            p_info_dict = process_manager.get_process_status(pid)
+    def build_subparser(parser: ArgumentParser) -> None:
+        parser.add_argument("pid", type=int, help="The process ID.")
 
-            command = p_info_dict["command"]
-            wd = p_info_dict.get("working_directory")
-            env = p_info_dict.get("environment")
+    def call_with_args(args: Namespace) -> ProcessLogPathsResult:
+        return get_process_log_paths(pid=args.pid)
 
-            # Stop old process
-            process_manager.stop_process(pid)
+    return Tool(
+        call=get_process_log_paths,
+        register_tool=register_tool,
+        build_subparser=build_subparser,
+        call_with_args=call_with_args,
+    )
 
-            # Start new process
-            new_p_info_dict = process_manager.start_process(command, wd, env)
-            return json.dumps(new_p_info_dict, indent=2)
 
-        except (ValueError, RuntimeError) as e:
-            logger.error(f"restart_process error: {e}")
-            return json.dumps({"error": str(e)})
+ALL_TOOL_BUILDERS = [
+    build_start_process_tool,
+    build_list_processes_tool,
+    build_get_process_status_tool,
+    build_stop_process_tool,
+    build_restart_process_tool,
+    build_get_process_output_tool,
+    build_get_process_log_paths_tool,
+]
+
+
+def get_tools(process_manager: ProcessManager) -> list[Tool]:
+    return [tool_builder(process_manager) for tool_builder in ALL_TOOL_BUILDERS]
