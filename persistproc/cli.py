@@ -84,6 +84,11 @@ def cli():
         default="ask",
         help="Behaviour when you press Ctrl+C: ask (default), stop the process, or detach and leave it running.",
     )
+    p_run.add_argument(
+        "--raw",
+        action="store_true",
+        help="Show raw timestamped log lines (default strips ISO timestamps).",
+    )
     add_common_args(p_run)
 
     process_manager = ProcessManager()
@@ -145,7 +150,7 @@ def cli():
         # Initialise ProcessManager now that *args.data_dir* is known.
         process_manager.bootstrap(pre_args.data_dir, server_log_path=log_path)
 
-        run(command, run_args, pre_args.verbose)
+        run(command, run_args, pre_args.verbose, raw=False)
         return  # done
 
     # ------------------------------------------------------------------
@@ -182,6 +187,7 @@ def cli():
             args.verbose,
             fresh=args.fresh,
             on_exit=args.on_exit,
+            raw=args.raw,
         )
     elif args.command in tools_by_name:
         tool = tools_by_name[args.command]

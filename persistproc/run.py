@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Sequence, Optional
 import asyncio
 import json
+import re
 
 from fastmcp.client import Client
 
@@ -20,10 +21,8 @@ __all__ = ["run"]
 
 logger = logging.getLogger(__name__)
 
-
-class _StopTailing(Exception):
-    """Internal sentinel used to break out of the tail-loop."""
-
+# Regex to strip ISO-8601 timestamp prefix produced by ProcessManager
+_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z ")
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -50,21 +49,32 @@ def _resolve_combined_path(stdout_path: str) -> Path:  # noqa: D401 – helper
     return Path(stdout_path + ".combined")
 
 
-def _tail_file(path: Path, stop_evt: threading.Event) -> None:  # noqa: D401 – helper
-    """Continuously print new lines appended to *path* until *stop_evt* is set."""
+def _tail_file(
+    path: Path, stop_evt: threading.Event, raw: bool
+) -> None:  # noqa: D401 – helper
+    """Continuously print new lines appended to *path* until *stop_evt* is set.
+
+    If *raw* is *False*, ISO timestamps are stripped and `[SYSTEM]` lines skipped.
+    """
+
+    def _maybe_transform(line: str) -> str | None:  # noqa: D401 – helper
+        if raw:
+            return line
+        if "[SYSTEM]" in line:
+            return None
+        return _TS_RE.sub("", line, count=1)
 
     try:
         with path.open("r", encoding="utf-8") as fh:
-            # Seek to end so we only show *new* lines.
             fh.seek(0, os.SEEK_END)
             while not stop_evt.is_set():
                 line = fh.readline()
                 if line:
-                    # Already contains newline.
-                    sys.stdout.write(line)
-                    sys.stdout.flush()
+                    processed = _maybe_transform(line)
+                    if processed is not None:
+                        sys.stdout.write(processed)
+                        sys.stdout.flush()
                 else:
-                    # No new data – wait briefly.
                     time.sleep(0.1)
     except FileNotFoundError:
         logger.error("Log file %s disappeared while tailing", path)
@@ -140,6 +150,64 @@ def _stop_process_via_mcp(mcp_url: str, pid: int) -> None:  # noqa: D401 – hel
 
 
 # ---------------------------------------------------------------------------
+# Additional MCP helpers for monitoring
+# ---------------------------------------------------------------------------
+
+
+async def _async_get_process_status(mcp_url: str, pid: int) -> str | None:  # noqa: D401
+    """Return status string for *pid* or *None* if request fails."""
+
+    async with Client(mcp_url) as client:
+        res = await client.call_tool("get_process_status", {"pid": pid})
+        info = json.loads(res[0].text)
+        return info.get("status")
+
+
+def _get_process_status(
+    mcp_url: str, pid: int
+) -> str | None:  # noqa: D401 – sync shell
+    try:
+        return asyncio.run(_async_get_process_status(mcp_url, pid))
+    except Exception:  # pragma: no cover – swallow
+        return None
+
+
+async def _async_find_restarted_process(
+    mcp_url: str, cmd_tokens: list[str], old_pid: int
+) -> tuple[int | None, Path | None]:  # noqa: D401 – helper
+    """If a new running process for *cmd_tokens* exists, return (pid, log_path)."""
+
+    async with Client(mcp_url) as client:
+        list_res = await client.call_tool("list_processes", {})
+        procs = json.loads(list_res[0].text).get("processes", [])
+
+        for proc in procs:
+            if (
+                proc.get("command") == cmd_tokens
+                and proc.get("status") == "running"
+                and proc.get("pid") != old_pid
+            ):
+                new_pid = proc["pid"]
+
+                logs_res = await client.call_tool(
+                    "get_process_log_paths", {"pid": new_pid}
+                )
+                logs_info = json.loads(logs_res[0].text)
+                combined = _resolve_combined_path(logs_info["stdout"])
+                return new_pid, combined
+    return None, None
+
+
+def _find_restarted_process(
+    mcp_url: str, cmd_tokens: list[str], old_pid: int
+) -> tuple[int | None, Path | None]:  # noqa: D401
+    try:
+        return asyncio.run(_async_find_restarted_process(mcp_url, cmd_tokens, old_pid))
+    except Exception:  # pragma: no cover – swallow
+        return None, None
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -151,6 +219,7 @@ def run(
     *,
     fresh: bool = False,
     on_exit: str = "ask",  # ask|stop|detach
+    raw: bool = False,
 ) -> None:  # noqa: D401
     """Ensure *command* is running via *persistproc* and tail its combined output.
 
@@ -171,6 +240,9 @@ def run(
         * ``ask``   – interactively prompt whether to stop or detach (default).
         * ``stop``  – stop the managed process immediately.
         * ``detach`` – leave the process running.
+    raw
+        If *True*, raw log lines are printed without stripping ISO timestamps or
+        skipping `[SYSTEM]` lines.
     """
 
     cmd_tokens = [command, *args]
@@ -217,14 +289,56 @@ def run(
     # Tail loop – runs in a thread so we can capture Ctrl+C cleanly.
     # ------------------------------------------------------------------
     stop_evt = threading.Event()
-    tail_thread = threading.Thread(
-        target=_tail_file, args=(combined_path, stop_evt), daemon=True
-    )
-    tail_thread.start()
+
+    def _start_tail_thread(p: Path):  # noqa: D401 – helper
+        t = threading.Thread(target=_tail_file, args=(p, stop_evt, raw), daemon=True)
+        t.start()
+        return t
+
+    tail_thread = _start_tail_thread(combined_path)
+
+    last_status_check = time.time()
 
     try:
-        while tail_thread.is_alive():
+        while True:
             tail_thread.join(timeout=0.3)
+
+            # Periodically check process status.
+            if time.time() - last_status_check >= 1.0:
+                last_status_check = time.time()
+                try:
+                    status_res = asyncio.run(_get_process_status(mcp_url, pid))
+                except Exception as exc:  # pragma: no cover – report but continue
+                    logger.debug("Status poll failed: %s", exc)
+                    status_res = None
+
+                if status_res != "running":
+                    # Process exited – look for replacement.
+                    new_pid, new_combined = asyncio.run(
+                        _find_restarted_process(mcp_url, cmd_tokens, pid)
+                    )
+                    if new_pid is None:
+                        break  # no restart – we're done
+
+                    # Restart detected → switch tail.
+                    logger.info(
+                        "Process was restarted (old PID %s → new PID %s). Switching log tail.",
+                        pid,
+                        new_pid,
+                    )
+
+                    pid = new_pid
+                    combined_path = new_combined
+
+                    stop_evt.set()
+                    tail_thread.join(timeout=1.0)
+
+                    stop_evt.clear()
+                    tail_thread = _start_tail_thread(combined_path)
+
+            if not tail_thread.is_alive():
+                # Tail finished naturally (e.g., log file closed) – exit loop.
+                break
     except KeyboardInterrupt:
         # User pressed Ctrl+C – stop tailing first.
         stop_evt.set()
