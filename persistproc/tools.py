@@ -3,6 +3,7 @@ from __future__ import annotations
 from argparse import ArgumentParser, Namespace
 from dataclasses import dataclass
 from typing import Any, Callable
+from pathlib import Path
 
 from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool
@@ -10,6 +11,15 @@ from fastmcp.tools import FunctionTool
 from persistproc.process_manager import ProcessManager
 
 import logging
+
+from .process_types import (
+    ListProcessesResult,
+    ProcessLogPathsResult,
+    ProcessOutputResult,
+    ProcessStatusResult,
+    StartProcessResult,
+    StopProcessResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,48 +41,6 @@ class Tool:
         return doc.strip()
 
 
-@dataclass
-class StartProcessResult:
-    pid: int
-
-
-@dataclass
-class StopProcessResult:
-    exit_code: int
-
-
-@dataclass
-class ProcessInfo:
-    pid: int
-    command: list[str]
-    working_directory: str
-    status: str
-
-
-@dataclass
-class ListProcessesResult:
-    processes: list[ProcessInfo]
-
-
-@dataclass
-class ProcessStatusResult:
-    pid: int
-    command: list[str]
-    working_directory: str
-    status: str
-
-
-@dataclass
-class ProcessOutputResult:
-    output: list[str]
-
-
-@dataclass
-class ProcessLogPathsResult:
-    stdout: str
-    stderr: str
-
-
 def build_start_process_tool(
     process_manager: ProcessManager,
 ) -> Tool:
@@ -84,7 +52,11 @@ def build_start_process_tool(
         # this is the help string for the command line (shorter)
         """Start a new long-running process."""
         logger.info("start_process called – cmd=%s, cwd=%s", command, working_directory)
-        return StartProcessResult(pid=0)
+        return process_manager.start_process(
+            command=command,
+            working_directory=Path(working_directory) if working_directory else None,
+            environment=environment,
+        )
 
     def register_tool(mcp: FastMCP) -> None:
         """Registers the tool with a FastMCP instance."""
@@ -134,7 +106,7 @@ def build_list_processes_tool(
     def list_processes() -> ListProcessesResult:
         """List all managed processes and their status."""
         logger.debug("list_processes called")
-        return ListProcessesResult(processes=[])
+        return process_manager.list_processes()
 
     def register_tool(mcp: FastMCP) -> None:
         """Registers the tool with a FastMCP instance."""
@@ -167,12 +139,7 @@ def build_get_process_status_tool(
     def get_process_status(pid: int) -> ProcessStatusResult:
         """Get the detailed status of a specific process."""
         logger.debug("get_process_status called for pid=%s", pid)
-        return ProcessStatusResult(
-            pid=pid,
-            command=["not", "implemented"],
-            working_directory="/tmp",
-            status="unknown",
-        )
+        return process_manager.get_process_status(pid)
 
     def register_tool(mcp: FastMCP) -> None:
         """Registers the tool with a FastMCP instance."""
@@ -205,7 +172,7 @@ def build_stop_process_tool(
     def stop_process(pid: int, force: bool = False) -> StopProcessResult:
         """Stop a running process by its PID."""
         logger.info("stop_process called for pid=%s force=%s", pid, force)
-        return StopProcessResult(exit_code=0)
+        return process_manager.stop_process(pid, force)
 
     def register_tool(mcp: FastMCP) -> None:
         """Registers the tool with a FastMCP instance."""
@@ -241,7 +208,7 @@ def build_restart_process_tool(
     def restart_process(pid: int) -> None:
         """Stops a process and starts it again with the same parameters."""
         logger.info("restart_process called for pid=%s", pid)
-        # TODO: implement restart logic
+        process_manager.restart_process(pid)
 
     def register_tool(mcp: FastMCP) -> None:
         """Registers the tool with a FastMCP instance."""
@@ -287,7 +254,7 @@ def build_get_process_output_tool(
             before_time,
             since_time,
         )
-        return ProcessOutputResult(output=[])
+        return process_manager.get_process_output(pid, stream, lines)
 
     def register_tool(mcp: FastMCP) -> None:
         """Registers the tool with a FastMCP instance."""
@@ -336,7 +303,7 @@ def build_get_process_log_paths_tool(
     def get_process_log_paths(pid: int) -> ProcessLogPathsResult:
         """Get the paths to the log files for a specific process."""
         logger.debug("get_process_log_paths called for pid=%s", pid)
-        return ProcessLogPathsResult(stdout="", stderr="")
+        return process_manager.get_process_log_paths(pid)
 
     def register_tool(mcp: FastMCP) -> None:
         """Registers the tool with a FastMCP instance."""
