@@ -23,8 +23,15 @@ def setup_logging(verbosity: int, data_dir: Path) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = data_dir / f"persistproc.run.{timestamp}.log"
 
-    # Root logger collects everything; individual handlers decide what they emit.
+    # We configure the root logger, so all libraries using the standard
+    # `logging` module will inherit this configuration.
     root_logger = logging.getLogger()
+
+    # Avoid adding handlers multiple times if this function is called repeatedly,
+    # which can happen during tests or complex CLI invocations.
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
     root_logger.setLevel(logging.DEBUG)
 
     # ----------------------------------------------------------------------------
@@ -63,7 +70,9 @@ def setup_logging(verbosity: int, data_dir: Path) -> Path:
     console_handler.setFormatter(logging.Formatter("%(message)s"))
     root_logger.addHandler(console_handler)
 
-    # Avoid duplicated logs if *setup_logging* is called multiple times.
-    root_logger.propagate = False  # type: ignore[attr-defined]
+    # By configuring the root logger, child loggers (like `uvicorn` or
+    # `fastmcp`) will automatically propagate their records up, so they will be
+    # captured by our file and console handlers. We no longer need to manage
+    # the `propagate` flag manually.
 
     return log_path
