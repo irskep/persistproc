@@ -55,6 +55,14 @@ def test_parse_cli_implicit_run(mock_setup_logging):
     assert action.run_args == ["arg1"]
 
 
+def test_parse_cli_global_flags_before_subcommand(mock_setup_logging):
+    """Global flags like -v and --port should be accepted before the subcommand."""
+    action, _ = parse_cli(["-v", "serve", "--port", "12345"])
+    assert isinstance(action, ServeAction)
+    assert action.verbose == 1
+    assert action.port == 12345
+
+
 def test_parse_cli_explicit_run(mock_setup_logging):
     """Test `persistproc run ...`."""
     action, _ = parse_cli(["run", "python", "-m", "http.server"])
@@ -64,7 +72,7 @@ def test_parse_cli_explicit_run(mock_setup_logging):
 
 
 def test_parse_cli_run_with_quoted_string(mock_setup_logging):
-    """Test `persistproc run "echo 'hello world'"`."""
+    """Test `persistproc run \"echo 'hello world'\"`."""
     action, _ = parse_cli(["run", "echo 'hello world'"])
     assert isinstance(action, RunAction)
     assert action.command == "echo"

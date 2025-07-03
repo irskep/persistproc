@@ -99,41 +99,51 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
     # Helper to avoid repeating common options on every sub-command
     # ------------------------------------------------------------------
 
+    common_parser = argparse.ArgumentParser(add_help=False)
+
     def add_common_args(p: argparse.ArgumentParser) -> None:  # noqa: D401
-        """Add --port, --data-dir and -v/--verbose options to *p*."""
+        """Add --port, --data-dir and -v/--verbose options to *p* with SUPPRESS default."""
 
         p.add_argument(
             "--port",
             type=int,
-            default=get_default_port(),
+            default=argparse.SUPPRESS,
             help=f"Server port (default: {get_default_port()}; env: ${ENV_PORT})",
         )
         p.add_argument(
             "--data-dir",
             type=Path,
-            default=get_default_data_dir(),
+            default=argparse.SUPPRESS,
             help=f"Data directory (default: {get_default_data_dir()}; env: ${ENV_DATA_DIR})",
         )
         p.add_argument(
             "-v",
             "--verbose",
             action="count",
-            default=0,
+            default=argparse.SUPPRESS,
             help="Increase verbosity; you can use -vv for more",
         )
+
+    add_common_args(common_parser)
+
+    # Root parser should also accept the common flags so they can appear before
+    # the sub-command (e.g. `persistproc -v serve`).
+    add_common_args(parser)
 
     # Main parser / sub-commands ------------------------------------------------
 
     subparsers = parser.add_subparsers(dest="command")
 
     # Serve command
-    p_serve = subparsers.add_parser("serve", help="Start the MCP server")
-    add_common_args(p_serve)
+    p_serve = subparsers.add_parser(
+        "serve", help="Start the MCP server", parents=[common_parser]
+    )
 
     # Run command
     p_run = subparsers.add_parser(
         "run",
         help="Make sure a process is running and tail its output (stdout and stderr) to stdout",
+        parents=[common_parser],
     )
     p_run.add_argument(
         "program",
@@ -158,14 +168,14 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         action="store_true",
         help="Show raw timestamped log lines (default strips ISO timestamps).",
     )
-    add_common_args(p_run)
 
     # Tool commands
     tools = [tool_cls() for tool_cls in ALL_TOOL_CLASSES]
     tools_by_name = {tool.name: tool for tool in tools}
     for tool in tools:
-        p_tool = subparsers.add_parser(tool.name, help=tool.description)
-        add_common_args(p_tool)
+        p_tool = subparsers.add_parser(
+            tool.name, help=tool.description, parents=[common_parser]
+        )
         tool.build_subparser(p_tool)
 
     # Argument parsing
@@ -183,15 +193,30 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         while i < len(argv):
             token = argv[i]
             if token.startswith("-"):
-                # Skip the option flag itself as well as its *possible* value.
-                # This is a heuristic – it will incorrectly skip a value for a
-                # boolean flag (which has no value), but in that case the value
-                # also starts with "-" or does not exist, so the next iteration
-                # handles it correctly.
-                if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
-                    i += 2
-                else:
+                # Heuristics for skipping option flags before we find the sub-command.
+                #
+                # 1. "-v" / "-vv" / "-vvv" are boolean count flags → no value follows.
+                if (
+                    token.lstrip("-").startswith("v")
+                    and set(token.lstrip("v-")) == set()
+                ):
                     i += 1
+                    continue
+
+                # 2. Long-form flags like "--port" or "--data-dir" may have the value
+                #    as the *next* token unless provided as "--port=1234".
+                if token.startswith("--") and "=" not in token:
+                    # Assume next token is the value *unless* it looks like another flag.
+                    skip = (
+                        2
+                        if i + 1 < len(argv) and not argv[i + 1].startswith("-")
+                        else 1
+                    )
+                    i += skip
+                    continue
+
+                # 3. Any other flag (including forms with "=") – skip just the token itself.
+                i += 1
                 continue
 
             # Non-flag token found – treat it as the prospective sub-command.
@@ -199,22 +224,29 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
             break
 
         if first_cmd is None:
-            # Only global/serve flags – default to `serve`
+            # Only global flags were provided (or none). Assume `serve`.
             args = parser.parse_args(["serve"] + argv)
         elif first_cmd in subparsers.choices:
-            # Explicit command provided
+            # Explicit command provided.
             args = parser.parse_args(argv)
         else:
-            # Implicit `run` command
+            # Implicit `run` command.
             args = parser.parse_args(["run"] + argv)
 
-    # Action creation
+    # ------------------------------------------------------------
+    # Action creation – derive common option values (may be missing)
+    # ------------------------------------------------------------
+
+    port_val = getattr(args, "port", get_default_port())
+    data_dir_val = getattr(args, "data_dir", get_default_data_dir())
+    verbose_val = getattr(args, "verbose", 0)
+
     action: CLIAction
     if args.command == "serve":
         action = ServeAction(
-            port=args.port,
-            data_dir=args.data_dir,
-            verbose=args.verbose,
+            port=port_val,
+            data_dir=data_dir_val,
+            verbose=verbose_val,
             log_path=log_path,
         )
     elif args.command == "run":
@@ -231,9 +263,9 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
             fresh=args.fresh,
             on_exit=args.on_exit,
             raw=args.raw,
-            port=args.port,
-            data_dir=args.data_dir,
-            verbose=args.verbose,
+            port=port_val,
+            data_dir=data_dir_val,
+            verbose=verbose_val,
         )
     elif args.command in tools_by_name:
         action = ToolAction(args=args)
