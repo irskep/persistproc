@@ -64,6 +64,22 @@ def _wait_for_log_line(
     pytest.fail(f"Pattern {pattern!r} not found in log within {timeout} seconds")
 
 
+def _popen_cli(*args: str) -> subprocess.Popen:
+    """Launch *persistproc* CLI as a subprocess and return Popen object."""
+
+    cmd = [
+        str(RUN_IN_VENV),
+        "python",
+        "-m",
+        "persistproc",
+        *args,
+    ]
+
+    return subprocess.Popen(
+        cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+
+
 # -----------------------------------------------------------------------------
 # Implemented smoke test
 # -----------------------------------------------------------------------------
@@ -72,20 +88,31 @@ def _wait_for_log_line(
 def test_serve_command_writes_startup_log(
     persistproc_data_dir: Path, persistproc_port: int
 ):
-    """`persistproc serve` should emit a startup INFO log entry."""
+    """`persistproc serve` should emit a startup INFO log entry and stay running."""
 
-    # The serve stub returns immediately.
-    result = _run_cli("serve")
+    proc = _popen_cli("serve")
 
-    assert result.returncode == 0, result.stderr
+    try:
+        # Confirm the expected log entry is written.
+        matched_line = _wait_for_log_line(
+            persistproc_data_dir,
+            rf"Starting MCP server on http://127\.0\.0\.1:{persistproc_port}",
+        )
 
-    # Confirm the expected log entry is written.
-    matched_line = _wait_for_log_line(
-        persistproc_data_dir,
-        rf"Starting MCP server on http://127\.0\.0\.1:{persistproc_port}",
-    )
+        assert "MCP server" in matched_line
+    finally:
+        # Send SIGINT to gracefully shut down the server.
+        import signal
 
-    assert "MCP server" in matched_line
+        proc.send_signal(signal.SIGINT)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=2)
+
+    # After shutdown, exit code should be 0.
+    assert proc.returncode == 0
 
 
 # -----------------------------------------------------------------------------

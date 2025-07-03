@@ -91,10 +91,6 @@ def build_start_process_tool(
             environment=env,
         )
 
-    # Ensure forward-ref in return annotation is fully-qualified so Pydantic can
-    # resolve it even when *globalns* is empty.
-    start_process.__annotations__["return"] = "StartProcessResult"
-
     return Tool(
         call=start_process,
         register_tool=register_tool,
@@ -128,8 +124,6 @@ def build_list_processes_tool(
     def call_with_args(args: Namespace) -> ListProcessesResult:
         return list_processes()
 
-    list_processes.__annotations__["return"] = "ListProcessesResult"
-
     return Tool(
         call=list_processes,
         register_tool=register_tool,
@@ -162,8 +156,6 @@ def build_get_process_status_tool(
 
     def call_with_args(args: Namespace) -> ProcessStatusResult:
         return get_process_status(pid=args.pid)
-
-    get_process_status.__annotations__["return"] = "ProcessStatusResult"
 
     return Tool(
         call=get_process_status,
@@ -201,8 +193,6 @@ def build_stop_process_tool(
     def call_with_args(args: Namespace) -> StopProcessResult:
         return stop_process(pid=args.pid, force=args.force)
 
-    stop_process.__annotations__["return"] = "StopProcessResult"
-
     return Tool(
         call=stop_process,
         register_tool=register_tool,
@@ -235,8 +225,6 @@ def build_restart_process_tool(
 
     def call_with_args(args: Namespace) -> RestartProcessResult:
         return restart_process(pid=args.pid)
-
-    restart_process.__annotations__["return"] = "RestartProcessResult"
 
     return Tool(
         call=restart_process,
@@ -300,8 +288,6 @@ def build_get_process_output_tool(
             since_time=args.since_time,
         )
 
-    get_process_output.__annotations__["return"] = "ProcessOutputResult"
-
     return Tool(
         call=get_process_output,
         register_tool=register_tool,
@@ -334,8 +320,6 @@ def build_get_process_log_paths_tool(
 
     def call_with_args(args: Namespace) -> ProcessLogPathsResult:
         return get_process_log_paths(pid=args.pid)
-
-    get_process_log_paths.__annotations__["return"] = "ProcessLogPathsResult"
 
     return Tool(
         call=get_process_log_paths,
