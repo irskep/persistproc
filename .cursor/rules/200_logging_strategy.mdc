@@ -16,3 +16,6 @@ The outcome is that after every failed test run, we'll have incredible detail to
 Prefer scoped log objects over the global logger.
 
 Logging is already configured in logging_utils.py.
+
+LOG FORMAT
+Debug logs should be machine-readable first, human-readable second. It should be easy to write test cases against these logs because the wording in English will not shift around.
