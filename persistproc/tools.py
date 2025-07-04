@@ -7,6 +7,7 @@ from pathlib import Path
 import json
 import asyncio
 import logging
+import os
 import shlex
 
 from fastmcp import FastMCP
@@ -332,12 +333,6 @@ class RestartProcessTool(ITool):
         )
 
     def call_with_args(self, args: Namespace) -> None:
-        env = (
-            dict(item.split("=", 1) for item in args.environment)
-            if args.environment
-            else None
-        )
-
         # Construct the command string from command and args
         if args.args:
             command = shlex.join([args.command_or_pid] + args.args)
@@ -350,10 +345,12 @@ class RestartProcessTool(ITool):
             else:
                 command = args.command_or_pid
 
+        # Default working directory to current directory if not specified
+        working_directory = args.working_directory or os.getcwd()
+
         payload = {
             "command": command,
-            "working_directory": args.working_directory,
-            "environment": env,
+            "working_directory": working_directory,
         }
         _make_mcp_request(self.name, args.port, payload)
 

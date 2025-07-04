@@ -193,6 +193,10 @@ class ProcessManager:  # noqa: D101
         if self._log_mgr is None:
             raise RuntimeError("ProcessManager.bootstrap() must be called first")
 
+        logger.debug(
+            "start_process: received command=%s type=%s", command, type(command)
+        )
+
         # Prevent duplicate *running* command instances (helps humans)
         logger.debug("start_process: acquiring lock")
         with self._lock:
@@ -441,7 +445,18 @@ class ProcessManager:  # noqa: D101
         logger.debug("restart_process: lock released for pid=%d", pid_to_restart)
 
         # Retain original parameters for restart
-        original_command = original_entry.command
+        original_command_list = original_entry.command
+        logger.debug(
+            "restart_process: original_command_list=%s type=%s",
+            original_command_list,
+            type(original_command_list),
+        )
+        original_command_str = shlex.join(original_command_list)
+        logger.debug(
+            "restart_process: original_command_str=%s type=%s",
+            original_command_str,
+            type(original_command_str),
+        )
         cwd = (
             Path(original_entry.working_directory)
             if original_entry.working_directory
@@ -454,8 +469,13 @@ class ProcessManager:  # noqa: D101
             # Forward failure.
             return RestartProcessResult(error=stop_res.error)
 
+        logger.debug(
+            "restart_process: calling start_process with command=%s type=%s",
+            original_command_str,
+            type(original_command_str),
+        )
         start_res = self.start_process(
-            original_command, working_directory=cwd, environment=env
+            original_command_str, working_directory=cwd, environment=env
         )
 
         logger.debug(
