@@ -10,6 +10,7 @@ from .console import console
 from .logging_utils import CLI_LOGGER
 from .tools import ALL_TOOL_CLASSES
 from .process_manager import ProcessManager
+from .logging_utils import get_is_quiet
 
 logger = logging.getLogger(__name__)
 
@@ -53,42 +54,43 @@ def serve(
     url = f"http://127.0.0.1:{port}/mcp/"
     CLI_LOGGER.info("Starting MCP server on %s", url)
 
-    # centered, with ------ lines above and below
-    console.rule("[bold yellow]Cursor[/bold yellow]")
-    print("In ~/.cursor/mcp.json:")
-    print_json(data={"mcpServers": {"persistproc": {"url": url}}})
-    console.rule("[bold yellow]Claude Code[/bold yellow]")
-    print()
-    print(f"claude mcp add --transport http persistproc {url}")
-    print()
-    console.rule("[bold yellow]Gemini CLI[/bold yellow]")
-    print("In ~/.gemini/settings.json:")
-    print_json(
-        data={
-            "mcpServers": {
-                "persistproc": {
-                    "command": "npx",
-                    "args": ["mcp-remote", url, "--transport", "http-only"],
+    if not get_is_quiet():
+        # centered, with ------ lines above and below
+        console.rule("[bold yellow]Cursor[/bold yellow]")
+        print("In ~/.cursor/mcp.json:")
+        print_json(data={"mcpServers": {"persistproc": {"url": url}}})
+        console.rule("[bold yellow]Claude Code[/bold yellow]")
+        print()
+        print(f"claude mcp add --transport http persistproc {url}")
+        print()
+        console.rule("[bold yellow]Gemini CLI[/bold yellow]")
+        print("In ~/.gemini/settings.json:")
+        print_json(
+            data={
+                "mcpServers": {
+                    "persistproc": {
+                        "command": "npx",
+                        "args": ["mcp-remote", url, "--transport", "http-only"],
+                    }
                 }
             }
-        }
-    )
-    console.rule("[bold yellow]Other[/bold yellow]")
-    print()
-    print(f"persistproc uses the HTTP transport protocol on {url}.")
-    print("Read your agent's documentation to learn how to hook it up.")
-    print()
-    print(
-        "[link=https://www.anthropic.com/products/claude-desktop]Claude Desktop[/link]"
-    )
-    print()
-    print("[link=https://docs.codeium.com/windsurf/mcp]Windsurf[/link]")
-    print()
-    print(
-        "[link=https://github.com/openai/codex?tab=readme-ov-file#model-context-protocol-mcp]Codex CLI[/link]"
-    )
-    print()
-    console.rule()
+        )
+        console.rule("[bold yellow]Other[/bold yellow]")
+        print()
+        print(f"persistproc uses the HTTP transport protocol on {url}.")
+        print("Read your agent's documentation to learn how to hook it up.")
+        print()
+        print(
+            "[link=https://www.anthropic.com/products/claude-desktop]Claude Desktop[/link]"
+        )
+        print()
+        print("[link=https://docs.codeium.com/windsurf/mcp]Windsurf[/link]")
+        print()
+        print(
+            "[link=https://github.com/openai/codex?tab=readme-ov-file#model-context-protocol-mcp]Codex CLI[/link]"
+        )
+        print()
+        console.rule()
 
     try:
         app.run(transport="http", host="127.0.0.1", port=port, path="/mcp/")

@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+import traceback
 from typing import Dict, List, Optional
 
 from persistproc.process_types import (
@@ -216,6 +217,11 @@ class ProcessManager:  # noqa: D101
         if working_directory and not working_directory.is_dir():
             raise ValueError(f"Working directory '{working_directory}' does not exist.")
 
+        diagnostic_info_for_errors = {
+            "command": command,
+            "working_directory": str(working_directory) if working_directory else None,
+        }
+
         try:
             proc = subprocess.Popen(  # noqa: S603 – user command
                 shlex.split(command),
@@ -229,9 +235,17 @@ class ProcessManager:  # noqa: D101
                 preexec_fn=os.setsid if os.name != "nt" else None,
             )
         except FileNotFoundError as exc:
-            raise ValueError(f"Command not found: {exc.filename}") from exc
+            return StartProcessResult(
+                error=f"Command not found: {exc.filename}\n\n{diagnostic_info_for_errors}"
+            )
+        except PermissionError as exc:
+            return StartProcessResult(
+                error=f"Permission denied: {exc.filename}\n\n{diagnostic_info_for_errors}"
+            )
         except Exception as exc:  # pragma: no cover – safety net
-            raise RuntimeError(f"Failed to start process: {exc}") from exc
+            return StartProcessResult(
+                error=f"Failed to start process: {exc}\n\n{traceback.format_exc()}"
+            )
 
         prefix = f"{proc.pid}.{_escape_cmd(command)}"
         self._log_mgr.start_pumps(proc, prefix)
@@ -257,7 +271,7 @@ class ProcessManager:  # noqa: D101
         logger.debug(
             "event=start pid=%s cmd=%s cwd=%s log_prefix=%s",
             proc.pid,
-            cmd := " ".join(ent.command),
+            shlex.join(ent.command),
             ent.working_directory,
             prefix,
         )

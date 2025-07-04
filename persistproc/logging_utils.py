@@ -9,6 +9,13 @@ import sys
 CLI_LOGGER_NAME = "persistproc.cli"
 
 
+_is_quiet = False
+
+
+def get_is_quiet() -> bool:
+    return _is_quiet
+
+
 class CustomFormatter(logging.Formatter):
 
     regular = "\x1b[37;20m"
@@ -43,6 +50,9 @@ def setup_logging(verbosity: int, data_dir: Path) -> Path:
     The function ensures *data_dir* exists and returns the path to the created
     log file.
     """
+    global _is_quiet
+    _is_quiet = verbosity <= -1
+
     # Ensure the directory exists so we can write the log file.
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -75,7 +85,19 @@ def setup_logging(verbosity: int, data_dir: Path) -> Path:
     # ----------------------------------------------------------------------------
     console_handler = logging.StreamHandler()
 
-    if verbosity <= 0:
+    if verbosity <= -1:
+        _is_quiet = True
+        # Default: only show the dedicated CLI logger at INFO level.
+        console_handler.setLevel(logging.WARNING)
+
+        class _CliOnlyFilter(logging.Filter):
+            def filter(
+                self, record: logging.LogRecord
+            ) -> bool:  # noqa: D401 – simple predicate
+                return record.name.startswith(CLI_LOGGER_NAME)
+
+        console_handler.addFilter(_CliOnlyFilter())
+    elif verbosity == 0:
         # Default: only show the dedicated CLI logger at INFO level.
         console_handler.setLevel(logging.INFO)
 
