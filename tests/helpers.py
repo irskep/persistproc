@@ -108,49 +108,15 @@ def start_run(cmd_tokens: list[str], *, on_exit: str = "stop") -> subprocess.Pop
     )
 
 
-def stop_run(proc: subprocess.Popen[str], timeout: float = 10.0) -> None:
-    """Stop a subprocess gracefully, with polling, and eventual SIGKILL."""
+def stop_run(proc: subprocess.Popen[str], timeout: float = 60.0) -> None:
+    """Stop a subprocess by sending SIGINT and waiting up to timeout seconds."""
     if proc.poll() is not None:
         return
 
-    # Deadline for the whole operation.
-    total_deadline = time.time() + timeout
-
-    # 1. Try SIGINT (Ctrl+C), poll for 1/3 of the timeout.
+    # Send SIGINT and wait for process to stop
     proc.send_signal(signal.SIGINT)
-    deadline = time.time() + (timeout / 3)
-    while time.time() < deadline and time.time() < total_deadline:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
         if proc.poll() is not None:
             return
         time.sleep(0.1)
-
-    if proc.poll() is not None:
-        return
-
-    # 2. Try SIGTERM, poll for another 1/3 of the timeout.
-    proc.terminate()
-    deadline = time.time() + (timeout / 3)
-    while time.time() < deadline and time.time() < total_deadline:
-        if proc.poll() is not None:
-            return
-        time.sleep(0.1)
-
-    if proc.poll() is not None:
-        return
-
-    # 3. Force kill the process group as a last resort.
-    if proc.poll() is None:
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                return  # Already gone
-        finally:
-            # Final wait, with whatever time is left.
-            remaining_time = max(0, total_deadline - time.time())
-            try:
-                proc.wait(timeout=remaining_time)
-            except subprocess.TimeoutExpired:
-                pass  # Should already be dead.
