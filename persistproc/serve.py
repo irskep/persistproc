@@ -50,13 +50,8 @@ def serve(
     pm.bootstrap(data_dir, server_log_path=log_path)
     app = _build_app(pm)
 
-    CLI_LOGGER.warning("Starting MCP server on http://127.0.0.1:%d", port)
+    CLI_LOGGER.info("Starting MCP server on http://127.0.0.1:%d", port)
 
-    # FastMCP provides an ASGI app with convenience *run* method similar to
-    # FastAPI's.  The call blocks until the server exits.
-    logger.info(
-        "MCP server now accepting connections on http://127.0.0.1:%d/mcp/", port
-    )
     try:
         app.run(transport="http", host="127.0.0.1", port=port, path="/mcp/")
     except KeyboardInterrupt:

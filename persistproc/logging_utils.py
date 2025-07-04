@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+import os
 from pathlib import Path
+import sys
 
 CLI_LOGGER_NAME = "persistproc.cli"
 
@@ -91,7 +93,10 @@ def setup_logging(verbosity: int, data_dir: Path) -> Path:
         # Show DEBUG from *all* loggers.
         console_handler.setLevel(logging.DEBUG)
 
-    console_handler.setFormatter(CustomFormatter())
+    if os.isatty(sys.stdout.fileno()):
+        console_handler.setFormatter(CustomFormatter())
+    else:
+        console_handler.setFormatter(logging.Formatter("%(message)s"))
     root_logger.addHandler(console_handler)
 
     # By configuring the root logger, child loggers (like `uvicorn` or
