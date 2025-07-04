@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 import signal
 import os
-import httpx
 
 __all__ = [
     "run_cli",

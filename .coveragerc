@@ -1,2 +1,7 @@
 [run]
-data_file = .coverage_data/.coverage 
+data_file = .coverage_data/.coverage
+parallel = true
+sigterm = true
+
+[report]
+fail_under = 60 
