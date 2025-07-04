@@ -6,12 +6,12 @@ from pathlib import Path
 import logging
 from dataclasses import dataclass
 from argparse import Namespace
-from typing import Union
+from typing import Union, Any
 
 from .run import run
 from .serve import serve
 from .tools import ALL_TOOL_CLASSES
-from .logging_utils import CLI_LOGGER_NAME, setup_logging
+from .logging_utils import CLI_LOGGER, setup_logging
 
 ENV_PORT = "PERSISTPROC_PORT"
 ENV_DATA_DIR = "PERSISTPROC_DATA_DIR"
@@ -46,6 +46,7 @@ class ToolAction:
     """Represents a tool command."""
 
     args: Namespace
+    tool: Any
 
 
 CLIAction = Union[ServeAction, RunAction, ToolAction]
@@ -79,6 +80,22 @@ def get_default_port() -> int:
     return 8947
 
 
+def parse_command_and_args(program: str, args: list[str]) -> tuple[str, list[str]]:
+    """Parse a program string and arguments list into command and args.
+
+    If program contains spaces and no separate args are provided,
+    shell-split the program string. Otherwise, return program and args as-is.
+    """
+    if " " in program and not args:
+        parts = shlex.split(program)
+        command = parts[0]
+        run_args = parts[1:]
+    else:
+        command = program
+        run_args = args
+    return command, run_args
+
+
 def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
     """Parse command line arguments and return a CLIAction and log path."""
     parser = argparse.ArgumentParser(
@@ -91,7 +108,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
     logging_parser = argparse.ArgumentParser(add_help=False)
     logging_parser.add_argument("--data-dir", type=Path, default=get_default_data_dir())
     logging_parser.add_argument("-v", "--verbose", action="count", default=0)
-    logging_args, remaining_argv = logging_parser.parse_known_args(argv)
+    logging_args, _ = logging_parser.parse_known_args(argv)
 
     log_path = setup_logging(logging_args.verbose or 0, logging_args.data_dir)
 
@@ -169,17 +186,32 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         help="Show raw timestamped log lines (default strips ISO timestamps).",
     )
 
-    # Tool commands
+    # ------------------------------------------------------------------
+    # Tool sub-commands – accept *both* snake_case and kebab-case variants
+    # ------------------------------------------------------------------
+
     tools = [tool_cls() for tool_cls in ALL_TOOL_CLASSES]
-    tools_by_name = {tool.name: tool for tool in tools}
-    tools_by_name.update(
-        {name.replace("_", "-"): tool for name, tool in tools_by_name.items()}
-    )
+
+    tools_by_name: dict[str, Any] = {}
+
     for tool in tools:
-        p_tool = subparsers.add_parser(
-            tool.name.replace("_", "-"), help=tool.description, parents=[common_parser]
-        )
-        tool.build_subparser(p_tool)
+        snake = tool.name  # canonical spelling in help
+        kebab = tool.name.replace("_", "-")  # accepted alias
+
+        # Create **one** sub-parser (canonical) and register alias via `aliases=` so it
+        # does not appear twice in `--help` output.
+        if snake not in subparsers.choices:
+            p_tool = subparsers.add_parser(
+                snake,
+                help=tool.description,
+                parents=[common_parser],
+                aliases=[kebab] if kebab != snake else [],
+            )
+            tool.build_subparser(p_tool)
+
+        # Map both spellings to the same tool object for later lookup.
+        tools_by_name[snake] = tool
+        tools_by_name[kebab] = tool
 
     # Argument parsing
     if not argv:
@@ -259,13 +291,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
             log_path=log_path,
         )
     elif args.command == "run":
-        if " " in args.program and not args.args:
-            parts = shlex.split(args.program)
-            command = parts[0]
-            run_args = parts[1:]
-        else:
-            command = args.program
-            run_args = args.args
+        command, run_args = parse_command_and_args(args.program, args.args)
         action = RunAction(
             command=command,
             run_args=run_args,
@@ -281,7 +307,8 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         # downstream code doesn't crash when the user omitted --port.
         if not hasattr(args, "port"):
             setattr(args, "port", port_val)
-        action = ToolAction(args=args)
+        tool = tools_by_name[args.command]
+        action = ToolAction(args=args, tool=tool)
     else:
         parser.print_help()
         sys.exit(1)
@@ -291,14 +318,13 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
 
 def handle_cli_action(action: CLIAction, log_path: Path) -> None:
     """Execute the action determined by the CLI."""
-    cli_logger = logging.getLogger(CLI_LOGGER_NAME)
-    cli_logger.info("Verbose log written to %s", log_path)
+    CLI_LOGGER.info("Verbose log written to %s", log_path)
 
     if isinstance(action, ServeAction):
-        cli_logger.info("Starting server on port %d", action.port)
+        CLI_LOGGER.info("Starting server on port %d", action.port)
         serve(action.port, action.verbose, action.data_dir, action.log_path)
     elif isinstance(action, RunAction):
-        cli_logger.info(
+        CLI_LOGGER.info(
             "Running command: %s %s", action.command, " ".join(action.run_args)
         )
         run(
@@ -308,15 +334,10 @@ def handle_cli_action(action: CLIAction, log_path: Path) -> None:
             fresh=action.fresh,
             on_exit=action.on_exit,
             raw=action.raw,
+            port=action.port,
         )
     elif isinstance(action, ToolAction):
-        tools = [tool_cls() for tool_cls in ALL_TOOL_CLASSES]
-        tools_by_name = {tool.name: tool for tool in tools}
-        tools_by_name.update(
-            {name.replace("_", "-"): tool for name, tool in tools_by_name.items()}
-        )
-        tool = tools_by_name[action.args.command]
-        tool.call_with_args(action.args)
+        action.tool.call_with_args(action.args)
 
 
 def cli() -> None:

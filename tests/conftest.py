@@ -10,6 +10,8 @@ import uuid
 
 import pytest
 
+from tests.helpers import start_persistproc, stop_run
+
 LOG_PATTERN = "persistproc.run.*.log"
 
 ENV_PORT = "PERSISTPROC_PORT"
@@ -180,16 +182,13 @@ def persistproc_port() -> int:
 # Helper fixtures for starting/stopping the persistproc server used in e2e tests
 # ---------------------------------------------------------------------------
 
-from tests.helpers import start_persistproc
-
 
 @pytest.fixture
 def persistproc_server():
     """Start a persistproc server for the duration of one test."""
     proc = start_persistproc()
     yield proc
-    proc.terminate()
-    proc.wait(timeout=10)
+    stop_run(proc)
 
 
 @pytest.fixture

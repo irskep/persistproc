@@ -1,0 +1,10 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rule: No imports inside functions
+
+FORBIDDEN: Importing modules inside a function or method body. All imports must be declared at the module's top level.
+
+RATIONALE: Keeping imports at the top makes dependencies explicit, avoids repeated import overhead, and aligns with project style guidelines.

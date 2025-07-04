@@ -219,6 +219,8 @@ class ProcessManager:  # noqa: D101
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 close_fds=True,
+                # Put the child in a different process group so a SIGINT will
+                # kill only the child, not the whole process group.
                 preexec_fn=os.setsid if os.name != "nt" else None,
             )
         except FileNotFoundError as exc:
@@ -251,7 +253,12 @@ class ProcessManager:  # noqa: D101
             ent.working_directory,
             prefix,
         )
-        return StartProcessResult(pid=proc.pid)
+        return StartProcessResult(
+            pid=proc.pid,
+            log_stdout=self._log_mgr.paths_for(prefix).stdout,
+            log_stderr=self._log_mgr.paths_for(prefix).stderr,
+            log_combined=self._log_mgr.paths_for(prefix).combined,
+        )
 
     # ------------------------------------------------------------------
     # Query helpers
@@ -278,8 +285,39 @@ class ProcessManager:  # noqa: D101
     # ------------------------------------------------------------------
 
     def stop_process(
-        self, pid: int, force: bool = False
+        self,
+        pid: int | None = None,
+        command: str | None = None,
+        working_directory: Path | None = None,
+        force: bool = False,
     ) -> StopProcessResult:  # noqa: D401
+        if pid is None and command is None:
+            return StopProcessResult(
+                error="Either pid or command must be provided to stop_process"
+            )
+
+        if command is not None:
+            found_pid = None
+            with self._lock:
+                for p_ent in self._processes.values():
+                    if (
+                        p_ent.command == shlex.split(command)
+                        and (p_ent.working_directory or "")
+                        == (str(working_directory) if working_directory else "")
+                        and p_ent.status == "running"
+                    ):
+                        found_pid = p_ent.pid
+                        break
+            if not found_pid:
+                return StopProcessResult(
+                    error=f"Command '{command}' not found running in '{working_directory}'."
+                )
+            pid = found_pid
+
+        if pid is None:
+            # Should be unreachable
+            return StopProcessResult(error="Could not identify process to stop.")
+
         ent = self._require(pid)
 
         if ent.status != "running":
@@ -312,7 +350,12 @@ class ProcessManager:  # noqa: D101
         logger.debug("event=stopped pid=%s exit_code=%s", pid, ent.exit_code)
         return StopProcessResult(exit_code=ent.exit_code)
 
-    def restart_process(self, pid: int) -> RestartProcessResult:  # noqa: D401
+    def restart_process(
+        self,
+        pid: int | None = None,
+        command: str | None = None,
+        working_directory: Path | None = None,
+    ) -> RestartProcessResult:  # noqa: D401
         """Attempt to stop then start *pid*.
 
         On success returns ``RestartProcessResult(pid=new_pid)`` for parity with
@@ -320,8 +363,40 @@ class ProcessManager:  # noqa: D101
         ``RestartProcessResult`` with ``error='timeout'`` is propagated so callers
         can decide how to handle the failure.
         """
+        if pid is None and command is None:
+            return RestartProcessResult(
+                error="Either pid or command must be provided to restart_process"
+            )
 
-        ent = self._require(pid)
+        ent: _ProcEntry | None = None
+        original_pid = pid
+
+        if pid is not None:
+            with self._lock:
+                if pid not in self._processes:
+                    return RestartProcessResult(error=f"PID {pid} not found")
+                ent = self._processes[pid]
+        else:  # command is not None
+            with self._lock:
+                for p_ent in self._processes.values():
+                    if (
+                        p_ent.command == shlex.split(command)
+                        and (p_ent.working_directory or "")
+                        == (str(working_directory) if working_directory else "")
+                        and p_ent.status == "running"
+                    ):
+                        ent = p_ent
+                        break
+            if not ent:
+                return RestartProcessResult(
+                    error=f"Command '{command}' not found running in '{working_directory}'."
+                )
+            pid = ent.pid
+
+        if ent is None or pid is None:
+            # This should be unreachable due to the checks above, but satisfies mypy.
+            return RestartProcessResult(error="Could not identify process to restart.")
+
         cmd = " ".join(ent.command)
         cwd = Path(ent.working_directory) if ent.working_directory else None
         env = ent.environment
@@ -333,7 +408,7 @@ class ProcessManager:  # noqa: D101
 
         start_res = self.start_process(cmd, working_directory=cwd, environment=env)
 
-        logger.debug("event=restart pid_old=%s pid_new=%s", pid, start_res.pid)
+        logger.debug("event=restart pid_old=%s pid_new=%s", original_pid, start_res.pid)
 
         return RestartProcessResult(pid=start_res.pid)
 
@@ -397,6 +472,55 @@ class ProcessManager:  # noqa: D101
         ent = self._require(pid)
         paths = self._log_mgr.paths_for(ent.log_prefix)
         return ProcessLogPathsResult(stdout=str(paths.stdout), stderr=str(paths.stderr))
+
+    def kill_persistproc(self) -> dict[str, int]:  # noqa: D401
+        """Kill all managed processes and then kill the server process."""
+        server_pid = os.getpid()
+        logger.info("event=kill_persistproc_start server_pid=%s", server_pid)
+
+        # Get a snapshot of all processes to kill
+        with self._lock:
+            processes_to_kill = list(self._processes.values())
+
+        if not processes_to_kill:
+            logger.debug("event=kill_persistproc_no_processes")
+        else:
+            logger.debug(
+                "event=kill_persistproc_killing_processes count=%s",
+                len(processes_to_kill),
+            )
+
+        # Kill each process
+        for ent in processes_to_kill:
+            if ent.status == "running":
+                logger.debug(
+                    "event=kill_persistproc_stopping pid=%s command=%s",
+                    ent.pid,
+                    " ".join(ent.command),
+                )
+                try:
+                    self.stop_process(ent.pid, force=True)
+                    logger.debug("event=kill_persistproc_stopped pid=%s", ent.pid)
+                except Exception as e:
+                    logger.warning(
+                        "event=kill_persistproc_failed pid=%s error=%s", ent.pid, e
+                    )
+            else:
+                logger.debug(
+                    "event=kill_persistproc_skip pid=%s status=%s", ent.pid, ent.status
+                )
+
+        logger.info("event=kill_persistproc_complete server_pid=%s", server_pid)
+
+        # Schedule server termination after a brief delay to allow response to be sent
+        def _kill_server():
+            time.sleep(0.1)  # Brief delay to allow response to be sent
+            logger.info("event=kill_persistproc_terminating_server pid=%s", server_pid)
+            os.kill(server_pid, signal.SIGTERM)
+
+        threading.Thread(target=_kill_server, daemon=True).start()
+
+        return {"pid": server_pid}
 
     # ------------------------------------------------------------------
     # Internals

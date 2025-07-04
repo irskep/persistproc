@@ -97,6 +97,36 @@ def test_parse_cli_tool_with_common_args(mock_setup_logging):
     assert action.args.port == 9999
 
 
+def test_parse_cli_restart_process_by_pid(mock_setup_logging):
+    """Test `persistproc restart_process 123`."""
+    action, _ = parse_cli(["restart_process", "123"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "restart_process"
+    assert action.args.command_or_pid == "123"
+    assert not action.args.args
+
+
+def test_parse_cli_restart_process_by_command(mock_setup_logging):
+    """Test `persistproc restart_process sleep 10`."""
+    action, _ = parse_cli(["restart_process", "sleep", "10"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "restart_process"
+    assert action.args.command_or_pid == "sleep"
+    assert action.args.args == ["10"]
+
+
+def test_parse_cli_restart_process_by_command_and_cwd(mock_setup_logging):
+    """Test `persistproc restart_process sleep 10 --working-directory /tmp`."""
+    action, _ = parse_cli(
+        ["restart_process", "sleep", "10", "--working-directory", "/tmp"]
+    )
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "restart_process"
+    assert action.args.command_or_pid == "sleep"
+    assert action.args.args == ["10"]
+    assert action.args.working_directory == "/tmp"
+
+
 def test_parse_cli_data_dir_and_verbose_for_logging(mock_setup_logging):
     """Check that logging setup receives the correct arguments."""
     data_dir = Path("/custom/data")

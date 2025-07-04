@@ -1,13 +1,7 @@
 from __future__ import annotations
-
-"""Shared dataclasses used by *persistproc* components.
-
-Having these types in a dedicated module avoids circular imports between
-``process_manager`` and ``tools``.
-"""
-
 from dataclasses import dataclass
 from typing import List
+from enum import Enum
 
 __all__ = [
     "StartProcessResult",
@@ -18,12 +12,22 @@ __all__ = [
     "ProcessOutputResult",
     "ProcessLogPathsResult",
     "RestartProcessResult",
+    "StreamEnum",
 ]
+
+
+class StreamEnum(str, Enum):
+    stdout = "stdout"
+    stderr = "stderr"
+    combined = "combined"
 
 
 @dataclass
 class StartProcessResult:
     pid: int
+    log_stdout: str
+    log_stderr: str
+    log_combined: str
 
 
 @dataclass

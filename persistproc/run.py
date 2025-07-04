@@ -10,12 +10,11 @@ from typing import Sequence, Optional
 import asyncio
 import json
 import re
+import signal
 
 from fastmcp.client import Client
 
-# NOTE: We **import at runtime** inside functions to avoid circular imports with
-# ``persistproc.cli``.  CLI initialises the singleton *ProcessManager* instance
-# and bootstraps it **before** calling :pyfunc:`run`.
+from persistproc.client import make_client
 
 __all__ = ["run"]
 
@@ -88,7 +87,7 @@ def _tail_file(
 
 
 async def _start_or_get_process_via_mcp(
-    mcp_url: str, cmd_tokens: list[str], fresh: bool
+    port: str, cmd_tokens: list[str], fresh: bool
 ) -> tuple[int, Path]:  # noqa: D401 – helper
     """Ensure the desired command is running via *persistproc* MCP.
 
@@ -97,50 +96,68 @@ async def _start_or_get_process_via_mcp(
 
     command_str = " ".join(cmd_tokens)
 
-    async with Client(mcp_url) as client:
-        # 1. Inspect existing processes.
-        list_res = await client.call_tool("list_processes", {})
-        procs = json.loads(list_res[0].text).get("processes", [])
+    # The server process may still be starting up when tests launch the `run`
+    # wrapper.  We therefore retry the whole *initialize → list_processes* flow
+    # for a short window, giving the server time to finish booting rather than
+    # blocking forever on an open TCP connection that never sends headers.
 
-        existing = _find_running_process_dict(procs, cmd_tokens)
+    deadline = time.time() + 10.0  # seconds
+    last_exc: Exception | None = None
 
-        if existing and fresh:
-            await client.call_tool("stop_process", {"pid": existing["pid"]})
-            existing = None
+    while time.time() < deadline:
+        try:
+            async with make_client() as client:
+                # 1. Inspect existing processes.
+                list_res = await client.call_tool("list_processes", {})
+                procs = json.loads(list_res[0].text).get("processes", [])
 
-        if existing is None:
-            start_res = await client.call_tool(
-                "start_process",
-                {
-                    "command": command_str,
-                    "working_directory": os.getcwd(),
-                    "environment": dict(os.environ),
-                },
-            )
-            start_info = json.loads(start_res[0].text)
-            if start_info.get("error"):
-                raise RuntimeError(start_info["error"])
-            pid = start_info["pid"]
-        else:
-            pid = existing["pid"]
+                existing = _find_running_process_dict(procs, cmd_tokens)
 
-        # 2. Fetch log paths to locate the combined file.
-        logs_res = await client.call_tool("get_process_log_paths", {"pid": pid})
-        logs_info = json.loads(logs_res[0].text)
-        if logs_info.get("error"):
-            raise RuntimeError(logs_info["error"])
+                if existing and fresh:
+                    await client.call_tool("stop_process", {"pid": existing["pid"]})
+                    existing = None
 
-        stdout_path = logs_info["stdout"]
-        combined_path = _resolve_combined_path(stdout_path)
+                if existing is None:
+                    start_res = await client.call_tool(
+                        "start_process",
+                        {
+                            "command": command_str,
+                            "working_directory": os.getcwd(),
+                            "environment": dict(os.environ),
+                        },
+                    )
+                    start_info = json.loads(start_res[0].text)
+                    if start_info.get("error"):
+                        raise RuntimeError(start_info["error"])
+                    pid = start_info["pid"]
+                else:
+                    pid = existing["pid"]
 
-        return pid, combined_path
+                # 2. Fetch log paths to locate the combined file.
+                logs_res = await client.call_tool("get_process_log_paths", {"pid": pid})
+                logs_info = json.loads(logs_res[0].text)
+                if logs_info.get("error"):
+                    raise RuntimeError(logs_info["error"])
+
+                stdout_path = logs_info["stdout"]
+                combined_path = _resolve_combined_path(stdout_path)
+
+                return pid, combined_path
+        except Exception as exc:  # pragma: no cover – retry window
+            last_exc = exc
+            await asyncio.sleep(0.25)
+
+    # All retries exhausted.
+    raise RuntimeError(
+        f"Unable to communicate with persistproc server on port {port}: {last_exc}"
+    )
 
 
-def _stop_process_via_mcp(mcp_url: str, pid: int) -> None:  # noqa: D401 – helper
+def _stop_process_via_mcp(port: int, pid: int) -> None:  # noqa: D401 – helper
     """Best-effort attempt to stop *pid* via MCP (synchronous wrapper)."""
 
     async def _do_stop() -> None:  # noqa: D401 – inner helper
-        async with Client(mcp_url) as client:
+        async with make_client(port) as client:
             await client.call_tool("stop_process", {"pid": pid})
 
     try:
@@ -154,30 +171,28 @@ def _stop_process_via_mcp(mcp_url: str, pid: int) -> None:  # noqa: D401 – hel
 # ---------------------------------------------------------------------------
 
 
-async def _async_get_process_status(mcp_url: str, pid: int) -> str | None:  # noqa: D401
+async def _async_get_process_status(port: str, pid: int) -> str | None:  # noqa: D401
     """Return status string for *pid* or *None* if request fails."""
 
-    async with Client(mcp_url) as client:
+    async with make_client(port) as client:
         res = await client.call_tool("get_process_status", {"pid": pid})
         info = json.loads(res[0].text)
         return info.get("status")
 
 
-def _get_process_status(
-    mcp_url: str, pid: int
-) -> str | None:  # noqa: D401 – sync shell
+def _get_process_status(port: str, pid: int) -> str | None:  # noqa: D401 – sync shell
     try:
-        return asyncio.run(_async_get_process_status(mcp_url, pid))
+        return asyncio.run(_async_get_process_status(port, pid))
     except Exception:  # pragma: no cover – swallow
         return None
 
 
 async def _async_find_restarted_process(
-    mcp_url: str, cmd_tokens: list[str], old_pid: int
+    port: str, cmd_tokens: list[str], old_pid: int
 ) -> tuple[int | None, Path | None]:  # noqa: D401 – helper
     """If a new running process for *cmd_tokens* exists, return (pid, log_path)."""
 
-    async with Client(mcp_url) as client:
+    async with make_client(port) as client:
         list_res = await client.call_tool("list_processes", {})
         procs = json.loads(list_res[0].text).get("processes", [])
 
@@ -199,10 +214,10 @@ async def _async_find_restarted_process(
 
 
 def _find_restarted_process(
-    mcp_url: str, cmd_tokens: list[str], old_pid: int
+    port: str, cmd_tokens: list[str], old_pid: int
 ) -> tuple[int | None, Path | None]:  # noqa: D401
     try:
-        return asyncio.run(_async_find_restarted_process(mcp_url, cmd_tokens, old_pid))
+        return asyncio.run(_async_find_restarted_process(port, cmd_tokens, old_pid))
     except Exception:  # pragma: no cover – swallow
         return None, None
 
@@ -220,6 +235,7 @@ def run(
     fresh: bool = False,
     on_exit: str = "ask",  # ask|stop|detach
     raw: bool = False,
+    port: int | None = None,
 ) -> None:  # noqa: D401
     """Ensure *command* is running via *persistproc* and tail its combined output.
 
@@ -243,26 +259,39 @@ def run(
     raw
         If *True*, raw log lines are printed without stripping ISO timestamps or
         skipping `[SYSTEM]` lines.
+    port
+        TCP port of the persistproc server.  If *None*, falls back to the
+        ``PERSISTPROC_PORT`` environment variable (or 8947 if unset).
     """
 
     cmd_tokens = [command, *args]
     cmd_str = " ".join(cmd_tokens)
+
+    # ------------------------------------------------------------------
+    # Robust Ctrl+C handling – turn any SIGINT into KeyboardInterrupt even
+    # when we are blocked inside ``asyncio.run``.  Restore the previous
+    # handler before we leave this function (all exit paths).
+    # ------------------------------------------------------------------
+
+    def _raise_keyboard_interrupt(signum, frame):  # noqa: D401 – small handler
+        raise KeyboardInterrupt
+
+    old_sigint_handler = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, _raise_keyboard_interrupt)
 
     logger.debug("run(command=%s) starting", cmd_str)
 
     # ------------------------------------------------------------------
     # Prep connection details (host is always localhost for now).
     # ------------------------------------------------------------------
-    port = int(os.environ.get("PERSISTPROC_PORT", "8947"))
-    mcp_url = f"http://127.0.0.1:{port}/mcp/"
 
     try:
         pid, combined_path = asyncio.run(
-            _start_or_get_process_via_mcp(mcp_url, cmd_tokens, fresh)
+            _start_or_get_process_via_mcp(port, cmd_tokens, fresh)
         )
     except ConnectionError as exc:
         logger.error(
-            "Could not connect to persistproc server at %s – is it running?", mcp_url
+            "Could not connect to persistproc server on port %s – is it running?", port
         )
         logger.debug("Connection details: %s", exc)
         sys.exit(1)
@@ -307,7 +336,7 @@ def run(
             if time.time() - last_status_check >= 1.0:
                 last_status_check = time.time()
                 try:
-                    status_res = asyncio.run(_get_process_status(mcp_url, pid))
+                    status_res = asyncio.run(_get_process_status(port, pid))
                 except Exception as exc:  # pragma: no cover – report but continue
                     logger.debug("Status poll failed: %s", exc)
                     status_res = None
@@ -315,7 +344,7 @@ def run(
                 if status_res != "running":
                     # Process exited – look for replacement.
                     new_pid, new_combined = asyncio.run(
-                        _find_restarted_process(mcp_url, cmd_tokens, pid)
+                        _find_restarted_process(port, cmd_tokens, pid)
                     )
                     if new_pid is None:
                         break  # no restart – we're done
@@ -363,12 +392,39 @@ def run(
 
         if _should_stop():
             logger.info("Stopping process PID %s", pid)
-            _stop_process_via_mcp(mcp_url, pid)
+            t0 = time.time()
+            _stop_process_via_mcp(port, pid)
+            logger.debug(
+                "stop_process MCP request completed in %.3fs", time.time() - t0
+            )
+
+            # Extra observability: confirm server now reports non-running.
+            status_after = _get_process_status(port, pid)
+            logger.debug("Status immediately after stop: %s", status_after)
+
+            # Wait (short) if still reported as running – should flip within
+            # one monitor tick.  This aids test reliability and gives us logs.
+            deadline = time.time() + 6.0  # <= monitor tick + grace
+            while status_after == "running" and time.time() < deadline:
+                time.sleep(0.25)
+                status_after = _get_process_status(port, pid)
+            logger.debug("Final status after stop wait: %s", status_after)
+
+            # Exit immediately: cleanup done, restore SIGINT handler first.
+            signal.signal(signal.SIGINT, old_sigint_handler)
+            return
         else:
             logger.info("Detaching – process PID %s left running", pid)
+
+        # Exit immediately: cleanup done, restore SIGINT handler first.
+        signal.signal(signal.SIGINT, old_sigint_handler)
+        return
 
     finally:
         stop_evt.set()
         tail_thread.join(timeout=1.0)
 
     logger.debug("run(command=%s) finished", cmd_str)
+
+    # Restore previous SIGINT handler on normal exit.
+    signal.signal(signal.SIGINT, old_sigint_handler)

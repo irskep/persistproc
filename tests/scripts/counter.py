@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Simple counter script for e2e tests.
 
-Prints incrementing integers (starting at 1) once per second.
+Prints incrementing integers (starting at 1) once per 0.1 seconds.
 Odd numbers -> stdout, even numbers -> stderr.
 
 CLI options:
@@ -43,7 +43,7 @@ def main() -> None:  # noqa: D401
             target = sys.stdout if iteration % 2 == 1 else sys.stderr
             print(iteration, file=target, flush=True)
             iteration += 1
-            time.sleep(1)
+            time.sleep(0.1)
     except KeyboardInterrupt:
         # Allow graceful termination via Ctrl+C or signals in tests.
         pass

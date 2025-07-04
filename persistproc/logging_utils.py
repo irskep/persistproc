@@ -76,3 +76,6 @@ def setup_logging(verbosity: int, data_dir: Path) -> Path:
     # the `propagate` flag manually.
 
     return log_path
+
+
+CLI_LOGGER = logging.getLogger(CLI_LOGGER_NAME)
