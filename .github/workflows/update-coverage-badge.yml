@@ -1,0 +1,39 @@
+name: Update Coverage Badge
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  update-badge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: ./run-in-venv.sh pip install coverage
+
+      - name: Run tests and generate coverage report
+        run: ./run-in-venv.sh pytest --cov --cov-report=json:coverage.json
+
+      - name: Update coverage badge
+        uses: tj-actions/coverage-badge-py@v2
+        with:
+          json-path: ./coverage.json
+          output-path: ./README.md
+          style: flat
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md
+          git commit -m "docs: Update test coverage badge" || echo "No changes to commit"
+          git push
