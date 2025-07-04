@@ -92,11 +92,17 @@ def _resolve_combined_path(stdout_path: str) -> Path:  # noqa: D401 – helper
 
 
 def _tail_file(
-    path: Path, stop_evt: threading.Event, raw: bool
+    path: Path,
+    stop_evt: threading.Event,
+    raw: bool,
+    buffer_mode: threading.Event | None = None,
+    buffer: list[str] | None = None,
+    buffer_lock: threading.Lock | None = None,
 ) -> None:  # noqa: D401 – helper
     """Continuously print new lines appended to *path* until *stop_evt* is set.
 
     If *raw* is *False*, ISO timestamps are stripped and `[SYSTEM]` lines skipped.
+    If *buffer_mode* is set, lines are appended to the buffer instead of printed.
     """
 
     def _maybe_transform(line: str) -> str | None:  # noqa: D401 – helper
@@ -114,8 +120,19 @@ def _tail_file(
                 if line:
                     processed = _maybe_transform(line)
                     if processed is not None:
-                        sys.stdout.write(processed)
-                        sys.stdout.flush()
+                        if (
+                            buffer_mode is not None
+                            and buffer_mode.is_set()
+                            and buffer is not None
+                            and buffer_lock is not None
+                        ):
+                            # Buffer mode - append to buffer instead of printing
+                            with buffer_lock:
+                                buffer.append(processed)
+                        else:
+                            # Normal mode - print directly
+                            sys.stdout.write(processed)
+                            sys.stdout.flush()
                 else:
                     time.sleep(0.1)
     except FileNotFoundError:
@@ -384,13 +401,22 @@ def run(
         CLI_LOGGER.error("Combined log %s did not appear; aborting tail", combined_path)
         return
 
-    # ------------------------------------------------------------------
+        # ------------------------------------------------------------------
     # Tail loop – runs in a thread so we can capture Ctrl+C cleanly.
     # ------------------------------------------------------------------
     stop_evt = threading.Event()
+    buffer_mode = threading.Event()  # Controls when to buffer vs print
+
+    # Buffer for capturing output during user prompt
+    output_buffer: list[str] = []
+    buffer_lock = threading.Lock()
 
     def _start_tail_thread(p: Path):  # noqa: D401 – helper
-        t = threading.Thread(target=_tail_file, args=(p, stop_evt, raw), daemon=True)
+        t = threading.Thread(
+            target=_tail_file,
+            args=(p, stop_evt, raw, buffer_mode, output_buffer, buffer_lock),
+            daemon=True,
+        )
         t.start()
         return t
 
@@ -439,11 +465,11 @@ def run(
                 # Tail finished naturally (e.g., log file closed) – exit loop.
                 break
     except KeyboardInterrupt:
-        # User pressed Ctrl+C – stop tailing first.
-        stop_evt.set()
-        tail_thread.join(timeout=2.0)
-
         logger.debug("Ctrl+C received – deciding action (on_exit=%s)", on_exit)
+
+        # Start buffering output during the prompt
+        output_buffer.clear()
+        buffer_mode.set()  # Enable buffering mode
 
         def _should_stop() -> bool:
             if on_exit == "stop":
@@ -478,27 +504,125 @@ def run(
 
         if _should_stop():
             logger.info("Stopping process PID %s", pid)
+
+            # Print any buffered output from during the prompt
+            with buffer_lock:
+                if output_buffer:
+                    sys.stdout.write("".join(output_buffer))
+                    sys.stdout.flush()
+                    output_buffer.clear()
+
+            # Disable buffering mode to resume normal printing
+            buffer_mode.clear()
+
+            # Send stop signal
             t0 = time.time()
             _stop_process_via_mcp(port, pid)
             logger.debug("stop MCP request completed in %.3fs", time.time() - t0)
 
-            # Extra observability: confirm server now reports non-running.
-            status_after = _get_process_status(port, pid)
-            logger.debug("Status immediately after stop: %s", status_after)
-
-            # Wait (short) if still reported as running – should flip within
-            # one monitor tick.  This aids test reliability and gives us logs.
+            # Monitor until process exits, continuing to tail output
             deadline = time.time() + 6.0  # <= monitor tick + grace
-            while status_after == "running" and time.time() < deadline:
-                time.sleep(0.25)
-                status_after = _get_process_status(port, pid)
-            logger.debug("Final status after stop wait: %s", status_after)
+            last_status_check = time.time()
+
+            try:
+                while time.time() < deadline:
+                    tail_thread.join(timeout=0.3)
+
+                    # Periodically check process status
+                    if time.time() - last_status_check >= 1.0:
+                        last_status_check = time.time()
+                        try:
+                            status_after = _get_process_status(port, pid)
+                            logger.debug(
+                                "Status check during shutdown: %s", status_after
+                            )
+                            if status_after != "running":
+                                break
+                        except (
+                            Exception
+                        ) as exc:  # pragma: no cover – report but continue
+                            logger.debug("Status poll failed during shutdown: %s", exc)
+
+                    if not tail_thread.is_alive():
+                        # Tail finished naturally (e.g., log file closed) – exit loop
+                        break
+
+                # Give a brief moment for any final output to be captured
+                time.sleep(0.5)
+
+            except KeyboardInterrupt:
+                # User hit Ctrl+C again while waiting for shutdown
+                logger.info("Second Ctrl+C received - forcing immediate exit")
+
+            # Final cleanup
+            stop_evt.set()
+            tail_thread.join(timeout=1.0)
+
+            # Final status check for logging
+            final_status = _get_process_status(port, pid)
+            logger.debug("Final status after stop wait: %s", final_status)
 
             # Exit immediately: cleanup done, restore SIGINT handler first.
             signal.signal(signal.SIGINT, old_sigint_handler)
             return
         else:
             logger.info("Detaching – process PID %s left running", pid)
+
+            # Clear buffer and resume normal tailing
+            with buffer_lock:
+                output_buffer.clear()
+
+            # Disable buffering mode to resume normal printing
+            buffer_mode.clear()
+
+            # Continue with normal monitoring loop
+            last_status_check = time.time()
+
+            try:
+                while True:
+                    tail_thread.join(timeout=0.3)
+
+                    # Periodically check process status.
+                    if time.time() - last_status_check >= 1.0:
+                        last_status_check = time.time()
+                        try:
+                            status_res = _get_process_status(port, pid)
+                        except (
+                            Exception
+                        ) as exc:  # pragma: no cover – report but continue
+                            logger.debug("Status poll failed: %s", exc)
+                            status_res = None
+
+                        if status_res != "running":
+                            # Process exited – look for replacement.
+                            new_pid, new_combined = _find_restarted_process(
+                                port, cmd_tokens, cwd, pid
+                            )
+                            if new_pid is None:
+                                break  # no restart – we're done
+
+                            # Restart detected → switch tail.
+                            logger.info(
+                                "Process was restarted (old PID %s → new PID %s). Switching log tail.",
+                                pid,
+                                new_pid,
+                            )
+
+                            pid = new_pid
+                            combined_path = new_combined
+
+                            stop_evt.set()
+                            tail_thread.join(timeout=1.0)
+
+                            stop_evt.clear()
+                            tail_thread = _start_tail_thread(combined_path)
+
+                    if not tail_thread.is_alive():
+                        # Tail finished naturally (e.g., log file closed) – exit loop.
+                        break
+            except KeyboardInterrupt:
+                # User pressed Ctrl+C again - exit cleanly
+                pass
 
         # Exit immediately: cleanup done, restore SIGINT handler first.
         signal.signal(signal.SIGINT, old_sigint_handler)
