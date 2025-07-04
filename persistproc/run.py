@@ -12,6 +12,14 @@ import json
 import re
 import signal
 
+try:
+    import termios
+    import tty
+
+    HAS_TERMIOS = True
+except ImportError:
+    HAS_TERMIOS = False
+
 from fastmcp.client import Client
 
 from persistproc.client import make_client
@@ -26,6 +34,38 @@ _TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z ")
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _get_single_char() -> str | None:  # noqa: D401 – helper
+    """Get a single character from stdin without waiting for Enter.
+
+    Returns None if not a TTY, on Windows, or on error.
+    Raises KeyboardInterrupt if Ctrl+C is pressed.
+    """
+    if not HAS_TERMIOS or not sys.stdin.isatty():
+        return None
+
+    try:
+        # Save current terminal settings
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+
+        try:
+            # Set terminal to raw mode
+            tty.setraw(fd)
+            char = sys.stdin.read(1)
+
+            # Handle Ctrl+C (ASCII 3) in raw mode
+            if ord(char) == 3:  # Ctrl+C
+                raise KeyboardInterrupt
+
+            return char
+        finally:
+            # Restore terminal settings
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    except (OSError, termios.error):
+        # Fall back to None if terminal manipulation fails
+        return None
 
 
 def _find_running_process_dict(
@@ -395,12 +435,26 @@ def run(
                 # Non-interactive – default to detach.
                 return False
             try:
-                reply = input(
+                sys.stdout.write(
                     f"Stop running process '{cmd_str}' in '{cwd}' (PID {pid})? [y/N] "
                 )
+                sys.stdout.flush()
+
+                # Try to get single character input
+                char = _get_single_char()
+                if char is not None:
+                    # Print the character so user sees what they pressed
+                    sys.stdout.write(char + "\n")
+                    sys.stdout.flush()
+                    return char.lower() == "y"
+                else:
+                    # Fall back to regular input() if single char doesn't work
+                    reply = input()
+                    return reply.strip().lower() == "y"
             except (EOFError, KeyboardInterrupt):
+                # If user presses Ctrl+C during the prompt, default to detach
+                sys.stdout.write("\n")  # Add newline for clean output
                 return False
-            return reply.strip().lower() == "y"
 
         if _should_stop():
             logger.info("Stopping process PID %s", pid)
