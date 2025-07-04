@@ -318,7 +318,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
 
 def handle_cli_action(action: CLIAction, log_path: Path) -> None:
     """Execute the action determined by the CLI."""
-    CLI_LOGGER.info("Verbose log written to %s", log_path)
+    CLI_LOGGER.info("Verbose log for this run: %s", shlex.quote(str(log_path)))
 
     if isinstance(action, ServeAction):
         serve(action.port, action.verbose, action.data_dir, action.log_path)
