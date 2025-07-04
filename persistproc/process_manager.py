@@ -194,7 +194,9 @@ class ProcessManager:  # noqa: D101
             raise RuntimeError("ProcessManager.bootstrap() must be called first")
 
         # Prevent duplicate *running* command instances (helps humans)
+        logger.debug("start_process: acquiring lock")
         with self._lock:
+            logger.debug("start_process: lock acquired")
             for ent in self._processes.values():
                 # Treat *command* and *working_directory* together as identity so
                 # you can run the *same* command from different directories.
@@ -207,6 +209,7 @@ class ProcessManager:  # noqa: D101
                     raise ValueError(
                         f"Command '{command}' already running in '{ent.working_directory}' with PID {ent.pid}."
                     )
+        logger.debug("start_process: lock released")
 
         if working_directory and not working_directory.is_dir():
             raise ValueError(f"Working directory '{working_directory}' does not exist.")
@@ -242,8 +245,11 @@ class ProcessManager:  # noqa: D101
             proc=proc,
         )
 
+        logger.debug("start_process: acquiring lock for update")
         with self._lock:
+            logger.debug("start_process: lock acquired for update")
             self._processes[proc.pid] = ent
+        logger.debug("start_process: lock released after update")
 
         logger.info("Process %s started", proc.pid)
         logger.debug(
@@ -265,20 +271,31 @@ class ProcessManager:  # noqa: D101
     # ------------------------------------------------------------------
 
     def list_processes(self) -> ListProcessesResult:  # noqa: D401
+        logger.debug("list_processes: acquiring lock")
         with self._lock:
-            infos = [self._to_public_info(e) for e in self._processes.values()]
-        return ListProcessesResult(processes=infos)
+            logger.debug("list_processes: lock acquired")
+            res = [self._to_public_info(ent) for ent in self._processes.values()]
+        logger.debug("list_processes: lock released")
+        return ListProcessesResult(processes=res)
 
     def get_process_status(self, pid: int) -> ProcessStatusResult:  # noqa: D401
+        logger.debug("get_process_status: acquiring lock for pid=%d", pid)
         with self._lock:
-            ent = self._require(pid)
-        logger.debug("event=get_process_status pid=%s status=%s", pid, ent.status)
-        return ProcessStatusResult(
-            pid=ent.pid,
-            command=ent.command,
-            working_directory=ent.working_directory or "",
-            status=ent.status,
-        )
+            logger.debug("get_process_status: lock acquired for pid=%d", pid)
+            try:
+                ent = self._require_unlocked(pid)
+                result = ProcessStatusResult(
+                    pid=ent.pid,
+                    command=ent.command,
+                    working_directory=ent.working_directory,
+                    status=ent.status,
+                )
+                logger.debug("get_process_status: lock released for pid=%d", pid)
+                return result
+            except ValueError as e:
+                logger.debug("get_process_status: lock released for pid=%d", pid)
+                # Re-raise as a standard error type for the tool wrapper
+                raise ValueError(str(e)) from e
 
     # ------------------------------------------------------------------
     # Control helpers
@@ -296,47 +313,66 @@ class ProcessManager:  # noqa: D101
                 error="Either pid or command must be provided to stop_process"
             )
 
-        if command is not None:
-            found_pid = None
+        pid_to_stop: int | None = None
+
+        if pid is not None:
+            pid_to_stop = pid
+        elif command is not None:
+            # Find PID from command + CWD
+            logger.debug("stop_process: acquiring lock to find pid")
             with self._lock:
-                for p_ent in self._processes.values():
+                logger.debug("stop_process: lock acquired to find pid")
+                for p in self._processes.values():
                     if (
-                        p_ent.command == shlex.split(command)
-                        and (p_ent.working_directory or "")
+                        p.command == shlex.split(command)
+                        and p.working_directory
                         == (str(working_directory) if working_directory else "")
-                        and p_ent.status == "running"
+                        and p.status == "running"
                     ):
-                        found_pid = p_ent.pid
+                        pid_to_stop = p.pid
                         break
-            if not found_pid:
-                return StopProcessResult(
-                    error=f"Command '{command}' not found running in '{working_directory}'."
-                )
-            pid = found_pid
+            logger.debug("stop_process: lock released after finding pid")
+        else:
+            raise ValueError("stop_process requires pid or command")
 
-        if pid is None:
-            # Should be unreachable
-            return StopProcessResult(error="Could not identify process to stop.")
+        if pid_to_stop is None:
+            return StopProcessResult(error="Process not found")
 
-        ent = self._require(pid)
+        logger.debug("stop_process: acquiring lock for pid=%d", pid_to_stop)
+        with self._lock:
+            logger.debug("stop_process: lock acquired for pid=%d", pid_to_stop)
+            try:
+                ent = self._require_unlocked(pid_to_stop)
+            except ValueError as e:
+                logger.debug("stop_process: lock released for pid=%d", pid_to_stop)
+                return StopProcessResult(error=str(e))
+        logger.debug("stop_process: lock released for pid=%d", pid_to_stop)
 
         if ent.status != "running":
-            return StopProcessResult(exit_code=ent.exit_code or 0)
+            return StopProcessResult(error=f"Process {pid_to_stop} is not running")
+
+        # Send SIGTERM first for graceful shutdown
+        try:
+            self._send_signal(pid_to_stop, signal.SIGTERM)
+            logger.debug("Sent SIGTERM to pid=%s", pid_to_stop)
+        except ProcessLookupError:
+            # Process already gone
+            pass
 
         timeout = 8.0  # XXX TIMEOUT – graceful wait
         exited = self._wait_for_exit(ent.proc, timeout)
         if not exited and not force:
             # Escalate to SIGKILL once and wait briefly.
             try:
-                self._send_signal(pid, signal.SIGKILL)
-                logger.warning("Escalated to SIGKILL pid=%s", pid)
+                self._send_signal(pid_to_stop, signal.SIGKILL)
+                logger.warning("Escalated to SIGKILL pid=%s", pid_to_stop)
             except ProcessLookupError:
                 pass  # Process vanished between checks.
 
             exited = self._wait_for_exit(ent.proc, 2.0)  # XXX TIMEOUT – short
 
         if not exited:
-            logger.error("event=stop_timeout pid=%s", pid)
+            logger.error("event=stop_timeout pid=%s", pid_to_stop)
             return StopProcessResult(error="timeout")
 
         # Process exited – record metadata.
@@ -347,7 +383,7 @@ class ProcessManager:  # noqa: D101
                 ent.exit_code = 0
             ent.exit_time = _get_iso_ts()
 
-        logger.debug("event=stopped pid=%s exit_code=%s", pid, ent.exit_code)
+        logger.debug("event=stopped pid=%s exit_code=%s", pid_to_stop, ent.exit_code)
         return StopProcessResult(exit_code=ent.exit_code)
 
     def restart_process(
@@ -363,52 +399,68 @@ class ProcessManager:  # noqa: D101
         ``RestartProcessResult`` with ``error='timeout'`` is propagated so callers
         can decide how to handle the failure.
         """
-        if pid is None and command is None:
-            return RestartProcessResult(
-                error="Either pid or command must be provided to restart_process"
-            )
+        logger.debug(
+            "restart_process: pid=%s, command=%s, cwd=%s",
+            pid,
+            command,
+            working_directory,
+        )
 
-        ent: _ProcEntry | None = None
-        original_pid = pid
+        pid_to_restart: int | None = pid
 
-        if pid is not None:
+        if pid_to_restart is None and command:
+            logger.debug("restart_process: acquiring lock to find pid")
             with self._lock:
-                if pid not in self._processes:
-                    return RestartProcessResult(error=f"PID {pid} not found")
-                ent = self._processes[pid]
-        else:  # command is not None
-            with self._lock:
-                for p_ent in self._processes.values():
+                logger.debug("restart_process: lock acquired to find pid")
+                for p in self._processes.values():
                     if (
-                        p_ent.command == shlex.split(command)
-                        and (p_ent.working_directory or "")
+                        p.command == shlex.split(command)
+                        and p.working_directory
                         == (str(working_directory) if working_directory else "")
-                        and p_ent.status == "running"
+                        and p.status == "running"
                     ):
-                        ent = p_ent
+                        pid_to_restart = p.pid
                         break
-            if not ent:
-                return RestartProcessResult(
-                    error=f"Command '{command}' not found running in '{working_directory}'."
+            logger.debug("restart_process: lock released after finding pid")
+
+        if pid_to_restart is None:
+            return RestartProcessResult(error="Process not found to restart.")
+
+        logger.debug("restart_process: acquiring lock for pid=%d", pid_to_restart)
+        with self._lock:
+            logger.debug("restart_process: lock acquired for pid=%d", pid_to_restart)
+            try:
+                original_entry = self._require_unlocked(pid_to_restart)
+            except ValueError:
+                logger.debug(
+                    "restart_process: lock released for pid=%d", pid_to_restart
                 )
-            pid = ent.pid
+                return RestartProcessResult(
+                    error=f"Process with PID {pid_to_restart} not found."
+                )
+        logger.debug("restart_process: lock released for pid=%d", pid_to_restart)
 
-        if ent is None or pid is None:
-            # This should be unreachable due to the checks above, but satisfies mypy.
-            return RestartProcessResult(error="Could not identify process to restart.")
+        # Retain original parameters for restart
+        original_command = original_entry.command
+        cwd = (
+            Path(original_entry.working_directory)
+            if original_entry.working_directory
+            else None
+        )
+        env = original_entry.environment
 
-        cmd = " ".join(ent.command)
-        cwd = Path(ent.working_directory) if ent.working_directory else None
-        env = ent.environment
-
-        stop_res = self.stop_process(pid, force=False)
+        stop_res = self.stop_process(pid_to_restart, force=False)
         if stop_res.error is not None:
             # Forward failure.
             return RestartProcessResult(error=stop_res.error)
 
-        start_res = self.start_process(cmd, working_directory=cwd, environment=env)
+        start_res = self.start_process(
+            original_command, working_directory=cwd, environment=env
+        )
 
-        logger.debug("event=restart pid_old=%s pid_new=%s", original_pid, start_res.pid)
+        logger.debug(
+            "event=restart pid_old=%s pid_new=%s", pid_to_restart, start_res.pid
+        )
 
         return RestartProcessResult(pid=start_res.pid)
 
@@ -424,8 +476,18 @@ class ProcessManager:  # noqa: D101
         before_time: Optional[str] = None,
         since_time: Optional[str] = None,
     ) -> ProcessOutputResult:  # noqa: D401
+        logger.debug("get_process_output: acquiring lock for pid=%d", pid)
+        with self._lock:
+            logger.debug("get_process_output: lock acquired for pid=%d", pid)
+            try:
+                ent = self._require_unlocked(pid)
+            except ValueError:
+                logger.debug("get_process_output: lock released for pid=%d", pid)
+                return ProcessOutputResult(output=[])  # Soft fail
+        logger.debug("get_process_output: lock released for pid=%d", pid)
+
         if self._log_mgr is None:
-            raise RuntimeError("ProcessManager not bootstrapped")
+            raise RuntimeError("Log manager not available")
 
         if pid == 0:
             # Special case – read the main CLI/server log file if known.
@@ -435,7 +497,6 @@ class ProcessManager:  # noqa: D101
                 return ProcessOutputResult(output=all_lines)
             return ProcessOutputResult(output=[])  # Unknown path – empty
 
-        ent = self._require(pid)
         paths = self._log_mgr.paths_for(ent.log_prefix)
         if stream not in paths:
             raise ValueError("stream must be stdout|stderr|combined")
@@ -469,7 +530,15 @@ class ProcessManager:  # noqa: D101
         return ProcessOutputResult(output=all_lines)
 
     def get_process_log_paths(self, pid: int) -> ProcessLogPathsResult:  # noqa: D401
-        ent = self._require(pid)
+        logger.debug("get_process_log_paths: acquiring lock for pid=%d", pid)
+        with self._lock:
+            logger.debug("get_process_log_paths: lock acquired for pid=%d", pid)
+            ent = self._require_unlocked(pid)
+            logger.debug("get_process_log_paths: lock released for pid=%d", pid)
+
+        if self._log_mgr is None:
+            raise RuntimeError("Log manager not available")
+
         paths = self._log_mgr.paths_for(ent.log_prefix)
         return ProcessLogPathsResult(stdout=str(paths.stdout), stderr=str(paths.stderr))
 
@@ -532,6 +601,13 @@ class ProcessManager:  # noqa: D101
                 raise ValueError(f"PID {pid} not found")
             return self._processes[pid]
 
+    def _require_unlocked(
+        self, pid: int
+    ) -> _ProcEntry:  # noqa: D401 – helper (assumes lock held)
+        if pid not in self._processes:
+            raise ValueError(f"PID {pid} not found")
+        return self._processes[pid]
+
     def _to_public_info(self, ent: _ProcEntry) -> ProcessInfo:  # noqa: D401 – helper
         return ProcessInfo(
             pid=ent.pid,
@@ -541,27 +617,37 @@ class ProcessManager:  # noqa: D101
         )
 
     def _monitor_loop(self) -> None:  # noqa: D401 – thread target
+        logger.debug("Monitor thread starting")
+
         while not self._stop_evt.is_set():
-            logger.debug("event=monitor_tick_start num_procs=%s", len(self._processes))
+            logger.debug("event=monitor_tick_start num_procs=%d", len(self._processes))
+
+            logger.debug("monitor_loop: acquiring lock")
             with self._lock:
-                running = [e for e in self._processes.values() if e.status == "running"]
-            for ent in running:
-                if ent.proc is None:
-                    continue
-                code = ent.proc.poll()
-                if code is not None:
-                    ent.exit_code = code
-                    ent.exit_time = _get_iso_ts()
-                    ent.status = "exited" if code == 0 else "failed"
-                    ent.proc = None
-                    logger.debug(
-                        "event=proc_exit pid=%s code=%s status=%s",
-                        ent.pid,
-                        code,
-                        ent.status,
-                    )
-            time.sleep(_POLL_INTERVAL)
+                logger.debug("monitor_loop: lock acquired")
+                procs_to_check = list(self._processes.values())
+
+                for ent in procs_to_check:
+                    if ent.status != "running" or ent.proc is None:
+                        continue  # Skip non-running processes
+
+                    if ent.proc.poll() is not None:
+                        # Process has exited.
+                        ent.status = "exited"
+                        ent.exit_code = ent.proc.returncode
+                        ent.exit_time = _get_iso_ts()
+                        logger.info(
+                            "Process %s exited with code %s", ent.pid, ent.exit_code
+                        )
+                logger.debug(
+                    "monitor_loop: lock released, checked %d procs",
+                    len(procs_to_check),
+                )
+
             logger.debug("event=monitor_tick_end")
+            time.sleep(_POLL_INTERVAL)
+
+        logger.debug("Monitor thread exiting")
 
     # ------------------ signal helpers ------------------
 

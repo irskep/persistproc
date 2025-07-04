@@ -29,12 +29,16 @@ _TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z ")
 
 
 def _find_running_process_dict(
-    processes: list[dict], cmd_tokens: list[str]
+    processes: list[dict], cmd_tokens: list[str], working_directory: str
 ) -> Optional[dict]:  # noqa: D401 – helper
     """Return the first *running* process dict matching *cmd_tokens*."""
 
     for info in processes:
-        if info.get("command") == cmd_tokens and info.get("status") == "running":
+        if (
+            info.get("command") == cmd_tokens
+            and info.get("status") == "running"
+            and info.get("working_directory") == working_directory
+        ):
             return info
     return None
 
@@ -87,7 +91,7 @@ def _tail_file(
 
 
 async def _start_or_get_process_via_mcp(
-    port: str, cmd_tokens: list[str], fresh: bool
+    port: str, cmd_tokens: list[str], fresh: bool, working_directory: str
 ) -> tuple[int, Path]:  # noqa: D401 – helper
     """Ensure the desired command is running via *persistproc* MCP.
 
@@ -106,12 +110,14 @@ async def _start_or_get_process_via_mcp(
 
     while time.time() < deadline:
         try:
-            async with make_client() as client:
+            async with make_client(port) as client:
                 # 1. Inspect existing processes.
                 list_res = await client.call_tool("list_processes", {})
                 procs = json.loads(list_res[0].text).get("processes", [])
 
-                existing = _find_running_process_dict(procs, cmd_tokens)
+                existing = _find_running_process_dict(
+                    procs, cmd_tokens, working_directory
+                )
 
                 if existing and fresh:
                     await client.call_tool("stop_process", {"pid": existing["pid"]})
@@ -122,7 +128,7 @@ async def _start_or_get_process_via_mcp(
                         "start_process",
                         {
                             "command": command_str,
-                            "working_directory": os.getcwd(),
+                            "working_directory": working_directory,
                             "environment": dict(os.environ),
                         },
                     )
@@ -188,7 +194,7 @@ def _get_process_status(port: str, pid: int) -> str | None:  # noqa: D401 – sy
 
 
 async def _async_find_restarted_process(
-    port: str, cmd_tokens: list[str], old_pid: int
+    port: str, cmd_tokens: list[str], working_directory: str, old_pid: int
 ) -> tuple[int | None, Path | None]:  # noqa: D401 – helper
     """If a new running process for *cmd_tokens* exists, return (pid, log_path)."""
 
@@ -200,6 +206,7 @@ async def _async_find_restarted_process(
             if (
                 proc.get("command") == cmd_tokens
                 and proc.get("status") == "running"
+                and proc.get("working_directory") == working_directory
                 and proc.get("pid") != old_pid
             ):
                 new_pid = proc["pid"]
@@ -214,10 +221,12 @@ async def _async_find_restarted_process(
 
 
 def _find_restarted_process(
-    port: str, cmd_tokens: list[str], old_pid: int
+    port: str, cmd_tokens: list[str], working_directory: str, old_pid: int
 ) -> tuple[int | None, Path | None]:  # noqa: D401
     try:
-        return asyncio.run(_async_find_restarted_process(port, cmd_tokens, old_pid))
+        return asyncio.run(
+            _async_find_restarted_process(port, cmd_tokens, working_directory, old_pid)
+        )
     except Exception:  # pragma: no cover – swallow
         return None, None
 
@@ -266,6 +275,7 @@ def run(
 
     cmd_tokens = [command, *args]
     cmd_str = " ".join(cmd_tokens)
+    cwd = os.getcwd()
 
     # ------------------------------------------------------------------
     # Robust Ctrl+C handling – turn any SIGINT into KeyboardInterrupt even
@@ -287,7 +297,7 @@ def run(
 
     try:
         pid, combined_path = asyncio.run(
-            _start_or_get_process_via_mcp(port, cmd_tokens, fresh)
+            _start_or_get_process_via_mcp(port, cmd_tokens, fresh, cwd)
         )
     except ConnectionError as exc:
         logger.error(
@@ -336,15 +346,15 @@ def run(
             if time.time() - last_status_check >= 1.0:
                 last_status_check = time.time()
                 try:
-                    status_res = asyncio.run(_get_process_status(port, pid))
+                    status_res = _get_process_status(port, pid)
                 except Exception as exc:  # pragma: no cover – report but continue
                     logger.debug("Status poll failed: %s", exc)
                     status_res = None
 
                 if status_res != "running":
                     # Process exited – look for replacement.
-                    new_pid, new_combined = asyncio.run(
-                        _find_restarted_process(port, cmd_tokens, pid)
+                    new_pid, new_combined = _find_restarted_process(
+                        port, cmd_tokens, cwd, pid
                     )
                     if new_pid is None:
                         break  # no restart – we're done
@@ -385,7 +395,9 @@ def run(
                 # Non-interactive – default to detach.
                 return False
             try:
-                reply = input(f"Stop running process '{cmd_str}' (PID {pid})? [y/N] ")
+                reply = input(
+                    f"Stop running process '{cmd_str}' in '{cwd}' (PID {pid})? [y/N] "
+                )
             except (EOFError, KeyboardInterrupt):
                 return False
             return reply.strip().lower() == "y"

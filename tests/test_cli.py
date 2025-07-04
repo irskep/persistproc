@@ -143,3 +143,28 @@ def test_root_help_displays_subcommands():
     assert proc.returncode == 0, proc.stderr
     assert "serve" in proc.stdout
     assert "list-processes" in proc.stdout or "list_processes" in proc.stdout
+
+
+def test_parse_cli_stop_process_by_pid(mock_setup_logging):
+    """Test `persistproc stop_process 123`."""
+    action, _ = parse_cli(["stop_process", "123"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "stop_process"
+    assert action.args.command_or_pid == "123"
+    assert not action.args.args
+
+
+def test_parse_cli_stop_process_by_command(mock_setup_logging):
+    """Test `persistproc stop_process sleep 10`."""
+    action, _ = parse_cli(["stop_process", "sleep", "10"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "stop_process"
+    assert action.args.command_or_pid == "sleep"
+    assert action.args.args == ["10"]
+
+
+def test_parse_cli_data_dir_and_verbose_for_logging(mock_setup_logging):
+    """Check that logging setup receives the correct arguments."""
+    data_dir = Path("/custom/data")
+    parse_cli(["serve", "--data-dir", str(data_dir), "-vvv"])
+    mock_setup_logging.assert_called_with(3, data_dir)
