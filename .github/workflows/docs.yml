@@ -5,15 +5,19 @@ on:
     branches: [ main ]
     paths: 
       - 'docs/**'
+      - 'README.md'
       - 'mkdocs.yml'
       - 'requirements-docs.txt'
+      - 'scripts/prepare-docs.sh'
       - '.github/**/*.yml'
   pull_request:
     paths:
       - 'docs/**'
+      - 'README.md'
       - 'mkdocs.yml'
       - 'mkdocs-local.yml'
       - 'requirements-docs.txt'
+      - 'scripts/prepare-docs.sh'
     branches-ignore:
       - 'dependabot/**'
 
@@ -41,6 +45,11 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements-docs.txt
+          
+      - name: Prepare documentation
+        run: |
+          chmod +x scripts/prepare-docs.sh
+          ./scripts/prepare-docs.sh
           
       - name: Build documentation
         run: |

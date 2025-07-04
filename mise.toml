@@ -1,3 +1,9 @@
 [tools]
 python = "3.12"
-uv = "latest" 
+uv = "latest"
+
+[tasks]
+"docs:prepare" = "scripts/prepare-docs.sh"
+"docs:build" = { depends = ["docs:prepare"], run = "mkdocs build --strict" }
+"docs:serve" = { depends = ["docs:prepare"], run = "mkdocs serve" }
+"docs:build-local" = { depends = ["docs:prepare"], run = "mkdocs build --strict -f mkdocs-local.yml" } 
