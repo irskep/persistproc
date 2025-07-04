@@ -184,7 +184,7 @@ class ProcessManager:  # noqa: D101
     # NOTE: The docstrings are intentionally minimal – rich help is provided
     #       in *tools.py* and the CLI.
 
-    def start_process(
+    def start(
         self,
         command: str,
         working_directory: Path | None = None,
@@ -193,14 +193,12 @@ class ProcessManager:  # noqa: D101
         if self._log_mgr is None:
             raise RuntimeError("ProcessManager.bootstrap() must be called first")
 
-        logger.debug(
-            "start_process: received command=%s type=%s", command, type(command)
-        )
+        logger.debug("start: received command=%s type=%s", command, type(command))
 
         # Prevent duplicate *running* command instances (helps humans)
-        logger.debug("start_process: acquiring lock")
+        logger.debug("start: acquiring lock")
         with self._lock:
-            logger.debug("start_process: lock acquired")
+            logger.debug("start: lock acquired")
             for ent in self._processes.values():
                 # Treat *command* and *working_directory* together as identity so
                 # you can run the *same* command from different directories.
@@ -213,7 +211,7 @@ class ProcessManager:  # noqa: D101
                     raise ValueError(
                         f"Command '{command}' already running in '{ent.working_directory}' with PID {ent.pid}."
                     )
-        logger.debug("start_process: lock released")
+        logger.debug("start: lock released")
 
         if working_directory and not working_directory.is_dir():
             raise ValueError(f"Working directory '{working_directory}' does not exist.")
@@ -249,15 +247,15 @@ class ProcessManager:  # noqa: D101
             proc=proc,
         )
 
-        logger.debug("start_process: acquiring lock for update")
+        logger.debug("start: acquiring lock for update")
         with self._lock:
-            logger.debug("start_process: lock acquired for update")
+            logger.debug("start: lock acquired for update")
             self._processes[proc.pid] = ent
-        logger.debug("start_process: lock released after update")
+        logger.debug("start: lock released after update")
 
         logger.info("Process %s started", proc.pid)
         logger.debug(
-            "event=start_process pid=%s cmd=%s cwd=%s log_prefix=%s",
+            "event=start pid=%s cmd=%s cwd=%s log_prefix=%s",
             proc.pid,
             cmd := " ".join(ent.command),
             ent.working_directory,
@@ -274,18 +272,18 @@ class ProcessManager:  # noqa: D101
     # Query helpers
     # ------------------------------------------------------------------
 
-    def list_processes(self) -> ListProcessesResult:  # noqa: D401
-        logger.debug("list_processes: acquiring lock")
+    def list(self) -> ListProcessesResult:  # noqa: D401
+        logger.debug("list: acquiring lock")
         with self._lock:
-            logger.debug("list_processes: lock acquired")
+            logger.debug("list: lock acquired")
             res = [self._to_public_info(ent) for ent in self._processes.values()]
-        logger.debug("list_processes: lock released")
+        logger.debug("list: lock released")
         return ListProcessesResult(processes=res)
 
-    def get_process_status(self, pid: int) -> ProcessStatusResult:  # noqa: D401
-        logger.debug("get_process_status: acquiring lock for pid=%d", pid)
+    def get_status(self, pid: int) -> ProcessStatusResult:  # noqa: D401
+        logger.debug("get_status: acquiring lock for pid=%d", pid)
         with self._lock:
-            logger.debug("get_process_status: lock acquired for pid=%d", pid)
+            logger.debug("get_status: lock acquired for pid=%d", pid)
             try:
                 ent = self._require_unlocked(pid)
                 result = ProcessStatusResult(
@@ -294,10 +292,10 @@ class ProcessManager:  # noqa: D101
                     working_directory=ent.working_directory,
                     status=ent.status,
                 )
-                logger.debug("get_process_status: lock released for pid=%d", pid)
+                logger.debug("get_status: lock released for pid=%d", pid)
                 return result
             except ValueError as e:
-                logger.debug("get_process_status: lock released for pid=%d", pid)
+                logger.debug("get_status: lock released for pid=%d", pid)
                 # Re-raise as a standard error type for the tool wrapper
                 raise ValueError(str(e)) from e
 
@@ -305,7 +303,7 @@ class ProcessManager:  # noqa: D101
     # Control helpers
     # ------------------------------------------------------------------
 
-    def stop_process(
+    def stop(
         self,
         pid: int | None = None,
         command: str | None = None,
@@ -314,7 +312,7 @@ class ProcessManager:  # noqa: D101
     ) -> StopProcessResult:  # noqa: D401
         if pid is None and command is None:
             return StopProcessResult(
-                error="Either pid or command must be provided to stop_process"
+                error="Either pid or command must be provided to stop"
             )
 
         pid_to_stop: int | None = None
@@ -323,9 +321,9 @@ class ProcessManager:  # noqa: D101
             pid_to_stop = pid
         elif command is not None:
             # Find PID from command + CWD
-            logger.debug("stop_process: acquiring lock to find pid")
+            logger.debug("stop: acquiring lock to find pid")
             with self._lock:
-                logger.debug("stop_process: lock acquired to find pid")
+                logger.debug("stop: lock acquired to find pid")
                 for p in self._processes.values():
                     if (
                         p.command == shlex.split(command)
@@ -335,22 +333,22 @@ class ProcessManager:  # noqa: D101
                     ):
                         pid_to_stop = p.pid
                         break
-            logger.debug("stop_process: lock released after finding pid")
+            logger.debug("stop: lock released after finding pid")
         else:
-            raise ValueError("stop_process requires pid or command")
+            raise ValueError("stop requires pid or command")
 
         if pid_to_stop is None:
             return StopProcessResult(error="Process not found")
 
-        logger.debug("stop_process: acquiring lock for pid=%d", pid_to_stop)
+        logger.debug("stop: acquiring lock for pid=%d", pid_to_stop)
         with self._lock:
-            logger.debug("stop_process: lock acquired for pid=%d", pid_to_stop)
+            logger.debug("stop: lock acquired for pid=%d", pid_to_stop)
             try:
                 ent = self._require_unlocked(pid_to_stop)
             except ValueError as e:
-                logger.debug("stop_process: lock released for pid=%d", pid_to_stop)
+                logger.debug("stop: lock released for pid=%d", pid_to_stop)
                 return StopProcessResult(error=str(e))
-        logger.debug("stop_process: lock released for pid=%d", pid_to_stop)
+        logger.debug("stop: lock released for pid=%d", pid_to_stop)
 
         if ent.status != "running":
             return StopProcessResult(error=f"Process {pid_to_stop} is not running")
@@ -390,7 +388,7 @@ class ProcessManager:  # noqa: D101
         logger.debug("event=stopped pid=%s exit_code=%s", pid_to_stop, ent.exit_code)
         return StopProcessResult(exit_code=ent.exit_code)
 
-    def restart_process(
+    def restart(
         self,
         pid: int | None = None,
         command: str | None = None,
@@ -399,12 +397,12 @@ class ProcessManager:  # noqa: D101
         """Attempt to stop then start *pid*.
 
         On success returns ``RestartProcessResult(pid=new_pid)`` for parity with
-        :py:meth:`stop_process`.  If stopping timed-out the same
+        :py:meth:`stop`.  If stopping timed-out the same
         ``RestartProcessResult`` with ``error='timeout'`` is propagated so callers
         can decide how to handle the failure.
         """
         logger.debug(
-            "restart_process: pid=%s, command=%s, cwd=%s",
+            "restart: pid=%s, command=%s, cwd=%s",
             pid,
             command,
             working_directory,
@@ -413,9 +411,9 @@ class ProcessManager:  # noqa: D101
         pid_to_restart: int | None = pid
 
         if pid_to_restart is None and command:
-            logger.debug("restart_process: acquiring lock to find pid")
+            logger.debug("restart: acquiring lock to find pid")
             with self._lock:
-                logger.debug("restart_process: lock acquired to find pid")
+                logger.debug("restart: lock acquired to find pid")
                 for p in self._processes.values():
                     if (
                         p.command == shlex.split(command)
@@ -425,35 +423,33 @@ class ProcessManager:  # noqa: D101
                     ):
                         pid_to_restart = p.pid
                         break
-            logger.debug("restart_process: lock released after finding pid")
+            logger.debug("restart: lock released after finding pid")
 
         if pid_to_restart is None:
             return RestartProcessResult(error="Process not found to restart.")
 
-        logger.debug("restart_process: acquiring lock for pid=%d", pid_to_restart)
+        logger.debug("restart: acquiring lock for pid=%d", pid_to_restart)
         with self._lock:
-            logger.debug("restart_process: lock acquired for pid=%d", pid_to_restart)
+            logger.debug("restart: lock acquired for pid=%d", pid_to_restart)
             try:
                 original_entry = self._require_unlocked(pid_to_restart)
             except ValueError:
-                logger.debug(
-                    "restart_process: lock released for pid=%d", pid_to_restart
-                )
+                logger.debug("restart: lock released for pid=%d", pid_to_restart)
                 return RestartProcessResult(
                     error=f"Process with PID {pid_to_restart} not found."
                 )
-        logger.debug("restart_process: lock released for pid=%d", pid_to_restart)
+        logger.debug("restart: lock released for pid=%d", pid_to_restart)
 
         # Retain original parameters for restart
         original_command_list = original_entry.command
         logger.debug(
-            "restart_process: original_command_list=%s type=%s",
+            "restart: original_command_list=%s type=%s",
             original_command_list,
             type(original_command_list),
         )
         original_command_str = shlex.join(original_command_list)
         logger.debug(
-            "restart_process: original_command_str=%s type=%s",
+            "restart: original_command_str=%s type=%s",
             original_command_str,
             type(original_command_str),
         )
@@ -464,17 +460,17 @@ class ProcessManager:  # noqa: D101
         )
         env = original_entry.environment
 
-        stop_res = self.stop_process(pid_to_restart, force=False)
+        stop_res = self.stop(pid_to_restart, force=False)
         if stop_res.error is not None:
             # Forward failure.
             return RestartProcessResult(error=stop_res.error)
 
         logger.debug(
-            "restart_process: calling start_process with command=%s type=%s",
+            "restart: calling start with command=%s type=%s",
             original_command_str,
             type(original_command_str),
         )
-        start_res = self.start_process(
+        start_res = self.start(
             original_command_str, working_directory=cwd, environment=env
         )
 
@@ -488,7 +484,7 @@ class ProcessManager:  # noqa: D101
     # Output helpers
     # ------------------------------------------------------------------
 
-    def get_process_output(
+    def get_output(
         self,
         pid: int,
         stream: str,
@@ -496,15 +492,15 @@ class ProcessManager:  # noqa: D101
         before_time: Optional[str] = None,
         since_time: Optional[str] = None,
     ) -> ProcessOutputResult:  # noqa: D401
-        logger.debug("get_process_output: acquiring lock for pid=%d", pid)
+        logger.debug("get_output: acquiring lock for pid=%d", pid)
         with self._lock:
-            logger.debug("get_process_output: lock acquired for pid=%d", pid)
+            logger.debug("get_output: lock acquired for pid=%d", pid)
             try:
                 ent = self._require_unlocked(pid)
             except ValueError:
-                logger.debug("get_process_output: lock released for pid=%d", pid)
+                logger.debug("get_output: lock released for pid=%d", pid)
                 return ProcessOutputResult(output=[])  # Soft fail
-        logger.debug("get_process_output: lock released for pid=%d", pid)
+        logger.debug("get_output: lock released for pid=%d", pid)
 
         if self._log_mgr is None:
             raise RuntimeError("Log manager not available")
@@ -549,12 +545,12 @@ class ProcessManager:  # noqa: D101
 
         return ProcessOutputResult(output=all_lines)
 
-    def get_process_log_paths(self, pid: int) -> ProcessLogPathsResult:  # noqa: D401
-        logger.debug("get_process_log_paths: acquiring lock for pid=%d", pid)
+    def get_log_paths(self, pid: int) -> ProcessLogPathsResult:  # noqa: D401
+        logger.debug("get_log_paths: acquiring lock for pid=%d", pid)
         with self._lock:
-            logger.debug("get_process_log_paths: lock acquired for pid=%d", pid)
+            logger.debug("get_log_paths: lock acquired for pid=%d", pid)
             ent = self._require_unlocked(pid)
-            logger.debug("get_process_log_paths: lock released for pid=%d", pid)
+            logger.debug("get_log_paths: lock released for pid=%d", pid)
 
         if self._log_mgr is None:
             raise RuntimeError("Log manager not available")
@@ -588,7 +584,7 @@ class ProcessManager:  # noqa: D101
                     " ".join(ent.command),
                 )
                 try:
-                    self.stop_process(ent.pid, force=True)
+                    self.stop(ent.pid, force=True)
                     logger.debug("event=kill_persistproc_stopped pid=%s", ent.pid)
                 except Exception as e:
                     logger.warning(

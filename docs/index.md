@@ -16,7 +16,7 @@ When developing locally, you often need long-running processes like web servers,
 
 Here's how it works:
 
-1.  Run `persistproc --serve` once.
+1.  Run `persistproc serve` once.
 2.  Use an agent, or the `persistproc` command, to start your development tasks (e.g., `persistproc npm run dev`, or "Hey claude, run `npm run dev` using persistproc").
 3.  Your AI agent, connected to the server, can now manage that process for you—restarting it after it makes a code change, or reading its logs to debug an issue—without needing to interrupt you or ask for terminal access. It doesn't matter if you or the agent started the process.
 
@@ -30,13 +30,14 @@ There is no config file. Processes are managed entirely at runtime. This is not 
 
 The server exposes the following tools:
 
-*   `start_process(command: str, working_directory: str = None, environment: dict = None)`: Start a new long-running process.
-*   `list_processes()`: List all managed processes and their status.
-*   `get_process_status(pid: int)`: Get the detailed status of a specific process.
-*   `stop_process(pid: int, force: bool = False)`: Stop a running process by its PID.
-*   `restart_process(pid: int)`: Stops a process and starts it again with the same parameters.
-*   `get_process_output(pid: int, stream: str, lines: int = None, before_time: str = None, since_time: str = None)`: Retrieve captured output from a process.
-*   `get_process_log_paths(pid: int)`: Get the paths to the log files for a specific process.
+*   `start(command: str, working_directory: str = None, environment: dict = None)`: Start a new long-running process.
+*   `list()`: List all managed processes and their status.
+*   `get_status(pid: int)`: Get the detailed status of a specific process.
+*   `stop(pid: int, command: str = None, working_directory: str = None, force: bool = False)`: Stop a running process by its PID.
+*   `restart(pid: int, command: str = None, working_directory: str = None)`: Stops a process and starts it again with the same parameters.
+*   `get_output(pid: int, stream: str, lines: int = None, before_time: str = None, since_time: str = None)`: Retrieve captured output from a process.
+*   `get_log_paths(pid: int)`: Get the paths to the log files for a specific process.
+*   `kill_persistproc()`: Kill all managed processes and get the PID of the persistproc server.
 
 ## Getting started
 
@@ -51,7 +52,7 @@ pip install persistproc
 Run this in a dedicated terminal and leave it running.
 
 ```bash
-persistproc --serve
+persistproc serve
 ```
 
 The server will log its own status to stdout and manage processes.
@@ -99,13 +100,13 @@ With this, your agent can now use the available tools to manage your development
 Once your agent is connected, you can ask it to manage your processes. Assuming you have started a web server with `persistproc npm run dev` (PID 12345), you can now interact with it.
 
 *   **You**: "List the running processes."
-    *   **Agent**: Calls `list_processes()` and shows you the running `npm run dev` process.
+    *   **Agent**: Calls `list()` and shows you the running `npm run dev` process.
 
 *   **You**: "The web server seems stuck. Can you restart it?"
-    *   **Agent**: Identifies the correct process and calls `restart_process(pid=12345)`.
+    *   **Agent**: Identifies the correct process and calls `restart(pid=12345)`.
 
 *   **You**: "Show me any errors from the web server."
-    *   **Agent**: Calls `get_process_output(pid=12345, stream="stderr")` to retrieve the latest error logs.
+    *   **Agent**: Calls `get_output(pid=12345, stream="stderr")` to retrieve the latest error logs.
 
 ## Development
 

@@ -32,7 +32,7 @@ class StartProcessResult:
 
 @dataclass
 class StopProcessResult:
-    """Result of a stop_process call.
+    """Result of a stop call.
 
     * ``exit_code`` is ``None`` when the target process could not be
     terminated (e.g. after SIGKILL timeout).  ``error`` then contains a short

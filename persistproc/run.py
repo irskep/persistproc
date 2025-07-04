@@ -85,7 +85,7 @@ def _find_running_process_dict(
 
 
 def _resolve_combined_path(stdout_path: str) -> Path:  # noqa: D401 – helper
-    """Given *stdout_path* as returned by *get_process_log_paths*, derive the *.combined* path."""
+    """Given *stdout_path* as returned by *get_log_paths*, derive the *.combined* path."""
 
     if stdout_path.endswith(".stdout"):
         return Path(stdout_path[:-7] + ".combined")
@@ -142,7 +142,7 @@ async def _start_or_get_process_via_mcp(
     command_str = " ".join(cmd_tokens)
 
     # The server process may still be starting up when tests launch the `run`
-    # wrapper.  We therefore retry the whole *initialize → list_processes* flow
+    # wrapper.  We therefore retry the whole *initialize → list* flow
     # for a short window, giving the server time to finish booting rather than
     # blocking forever on an open TCP connection that never sends headers.
 
@@ -155,7 +155,7 @@ async def _start_or_get_process_via_mcp(
         try:
             async with make_client(port) as client:
                 # 1. Inspect existing processes.
-                list_res = await client.call_tool("list_processes", {})
+                list_res = await client.call_tool("list", {})
                 procs = json.loads(list_res[0].text).get("processes", [])
 
                 existing = _find_running_process_dict(
@@ -163,12 +163,12 @@ async def _start_or_get_process_via_mcp(
                 )
 
                 if existing and fresh:
-                    await client.call_tool("stop_process", {"pid": existing["pid"]})
+                    await client.call_tool("stop", {"pid": existing["pid"]})
                     existing = None
 
                 if existing is None:
                     start_res = await client.call_tool(
-                        "start_process",
+                        "start",
                         {
                             "command": command_str,
                             "working_directory": working_directory,
@@ -183,7 +183,7 @@ async def _start_or_get_process_via_mcp(
                     pid = existing["pid"]
 
                 # 2. Fetch log paths to locate the combined file.
-                logs_res = await client.call_tool("get_process_log_paths", {"pid": pid})
+                logs_res = await client.call_tool("get_log_paths", {"pid": pid})
                 logs_info = json.loads(logs_res[0].text)
                 if logs_info.get("error"):
                     raise RuntimeError(logs_info["error"])
@@ -210,7 +210,7 @@ def _stop_process_via_mcp(port: int, pid: int) -> None:  # noqa: D401 – helper
 
     async def _do_stop() -> None:  # noqa: D401 – inner helper
         async with make_client(port) as client:
-            await client.call_tool("stop_process", {"pid": pid})
+            await client.call_tool("stop", {"pid": pid})
 
     try:
         asyncio.run(_do_stop())
@@ -227,7 +227,7 @@ async def _async_get_process_status(port: str, pid: int) -> str | None:  # noqa:
     """Return status string for *pid* or *None* if request fails."""
 
     async with make_client(port) as client:
-        res = await client.call_tool("get_process_status", {"pid": pid})
+        res = await client.call_tool("get_status", {"pid": pid})
         info = json.loads(res[0].text)
         return info.get("status")
 
@@ -245,7 +245,7 @@ async def _async_find_restarted_process(
     """If a new running process for *cmd_tokens* exists, return (pid, log_path)."""
 
     async with make_client(port) as client:
-        list_res = await client.call_tool("list_processes", {})
+        list_res = await client.call_tool("list", {})
         procs = json.loads(list_res[0].text).get("processes", [])
 
         for proc in procs:
@@ -257,9 +257,7 @@ async def _async_find_restarted_process(
             ):
                 new_pid = proc["pid"]
 
-                logs_res = await client.call_tool(
-                    "get_process_log_paths", {"pid": new_pid}
-                )
+                logs_res = await client.call_tool("get_log_paths", {"pid": new_pid})
                 logs_info = json.loads(logs_res[0].text)
                 combined = _resolve_combined_path(logs_info["stdout"])
                 return new_pid, combined
@@ -483,9 +481,7 @@ def run(
             logger.info("Stopping process PID %s", pid)
             t0 = time.time()
             _stop_process_via_mcp(port, pid)
-            logger.debug(
-                "stop_process MCP request completed in %.3fs", time.time() - t0
-            )
+            logger.debug("stop MCP request completed in %.3fs", time.time() - t0)
 
             # Extra observability: confirm server now reports non-running.
             status_after = _get_process_status(port, pid)
