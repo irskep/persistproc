@@ -8,7 +8,7 @@ A shared process layer for multi-agent development workflows
 
 ---
 
-> For the most up-to-date and complete documentation, please visit [steveasleep.com/persistproc](https://steveasleep.com/persistproc).
+> For the most up-to-date and complete documentation, please visit [steveasleep.com/persistproc](https://steveasleep.com/persistproc-mcp).
 
 ## What is `persistproc`?
 
