@@ -23,6 +23,7 @@ except ImportError:
 from fastmcp.client import Client
 
 from persistproc.client import make_client
+from persistproc.logging_utils import CLI_LOGGER
 
 __all__ = ["run"]
 
@@ -147,8 +148,10 @@ async def _start_or_get_process_via_mcp(
 
     deadline = time.time() + 10.0  # seconds
     last_exc: Exception | None = None
+    retry_count = 0
 
     while time.time() < deadline:
+        retry_count += 1
         try:
             async with make_client(port) as client:
                 # 1. Inspect existing processes.
@@ -191,11 +194,14 @@ async def _start_or_get_process_via_mcp(
                 return pid, combined_path
         except Exception as exc:  # pragma: no cover – retry window
             last_exc = exc
-            await asyncio.sleep(0.25)
+            # Only sleep if we have time left for another retry
+            if time.time() + 0.25 < deadline:
+                await asyncio.sleep(0.25)
 
     # All retries exhausted.
+    exc_info = f" (last error: {last_exc})" if last_exc else ""
     raise RuntimeError(
-        f"Unable to communicate with persistproc server on port {port}: {last_exc}"
+        f"Unable to communicate with persistproc server on port {port} after {retry_count} attempts{exc_info}"
     )
 
 
@@ -339,14 +345,31 @@ def run(
         pid, combined_path = asyncio.run(
             _start_or_get_process_via_mcp(port, cmd_tokens, fresh, cwd)
         )
-    except ConnectionError as exc:
-        logger.error(
+    except (ConnectionError, OSError) as exc:
+        CLI_LOGGER.error(
             "Could not connect to persistproc server on port %s – is it running?", port
         )
+        CLI_LOGGER.error("Start the server with: persistproc serve --port %s", port)
         logger.debug("Connection details: %s", exc)
         sys.exit(1)
-    except RuntimeError as exc:
-        logger.error(str(exc))
+    except Exception as exc:
+        # Handle timeout exceptions and other connection issues
+        exc_name = exc.__class__.__name__
+        if "timeout" in exc_name.lower() or "timeout" in str(exc).lower():
+            CLI_LOGGER.error(
+                "Connection to persistproc server on port %s timed out – is it running?",
+                port,
+            )
+            CLI_LOGGER.error("Start the server with: persistproc serve --port %s", port)
+        elif "connection" in str(exc).lower():
+            CLI_LOGGER.error(
+                "Could not connect to persistproc server on port %s – is it running?",
+                port,
+            )
+            CLI_LOGGER.error("Start the server with: persistproc serve --port %s", port)
+        else:
+            CLI_LOGGER.error("Failed to communicate with persistproc server: %s", exc)
+        logger.debug("Full error details: %s", exc)
         sys.exit(1)
 
     logger.info(
@@ -361,7 +384,7 @@ def run(
         time.sleep(0.05)
 
     if not combined_path.exists():
-        logger.error("Combined log %s did not appear; aborting tail", combined_path)
+        CLI_LOGGER.error("Combined log %s did not appear; aborting tail", combined_path)
         return
 
     # ------------------------------------------------------------------
