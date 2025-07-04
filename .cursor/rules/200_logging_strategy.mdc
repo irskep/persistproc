@@ -1,0 +1,21 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Logging in this project should be detailed, scoped, and extensive. Logs are the primary way to debug test runs, so they should make execution history obvious.
+
+There should be an explicit log scope for command line output. Without -v or -vv, all other logging should be silenced from the command line.
+
+Otherwise, each module and function should have its own log scope. Error, warn, info, and debug levels should be used appropriately.
+
+Each invocation of persistproc should write a complete log with debug verbosity to data_dir/persistproc.run.<timestamp>.log. This may require synchronizing across threads or using multiprocessing and a queue, since we're managing multiple processes potentially using threads, but we don't necessarily need to go that far until we know we need it.
+
+The outcome is that after every failed test run, we'll have incredible detail to see exactly what happened and find an appropriate fix that doesn't involve setting arbitrary timeouts.
+
+Prefer scoped log objects over the global logger.
+
+Logging is already configured in logging_utils.py.
+
+LOG FORMAT
+Debug logs should be machine-readable first, human-readable second. It should be easy to write test cases against these logs because the wording in English will not shift around.

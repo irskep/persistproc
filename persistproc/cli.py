@@ -1,419 +1,362 @@
-"""
-Client-side CLI and log tailing functionality.
-
-This module contains the command-line interface code for connecting
-to the MCP server and tailing process logs.
-"""
-
 import argparse
-import asyncio
-import json
-import logging
 import os
-import re
-import signal
+import shlex
 import sys
-import threading
-import time
 from pathlib import Path
-from typing import Optional
+import logging
+from dataclasses import dataclass
+from argparse import Namespace
+from typing import Union, Any
 
-from fastmcp.client import Client
+from .run import run
+from .serve import serve
+from .tools import ALL_TOOL_CLASSES
+from .logging_utils import CLI_LOGGER, setup_logging
 
-logger = logging.getLogger("persistproc")
-
-# Constants for log processing
-TIMESTAMP_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z ")
+ENV_PORT = "PERSISTPROC_PORT"
+ENV_DATA_DIR = "PERSISTPROC_DATA_DIR"
 
 
-def parse_args():
-    """Parse command line arguments."""
+@dataclass
+class ServeAction:
+    """Represents the 'serve' command."""
+
+    port: int
+    data_dir: Path
+    verbose: int
+    log_path: Path
+
+
+@dataclass
+class RunAction:
+    """Represents the 'run' command."""
+
+    command: str
+    run_args: list[str]
+    fresh: bool
+    on_exit: str
+    raw: bool
+    port: int
+    data_dir: Path
+    verbose: int
+
+
+@dataclass
+class ToolAction:
+    """Represents a tool command."""
+
+    args: Namespace
+    tool: Any
+
+
+CLIAction = Union[ServeAction, RunAction, ToolAction]
+
+
+def get_default_data_dir() -> Path:
+    """Return default data directory, honouring *PERSISTPROC_DATA_DIR*."""
+
+    if ENV_DATA_DIR in os.environ and os.environ[ENV_DATA_DIR]:
+        return Path(os.environ[ENV_DATA_DIR]).expanduser().resolve()
+
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "persistproc"
+    elif sys.platform.startswith("linux"):
+        return (
+            Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+            / "persistproc"
+        )
+    return Path.home() / ".persistproc"
+
+
+def get_default_port() -> int:
+    """Return default port, honouring *PERSISTPROC_PORT*."""
+
+    if ENV_PORT in os.environ:
+        try:
+            return int(os.environ[ENV_PORT])
+        except ValueError:
+            pass  # fall through to hard-coded default
+
+    return 8947
+
+
+def parse_command_and_args(program: str, args: list[str]) -> tuple[str, list[str]]:
+    """Parse a program string and arguments list into command and args.
+
+    If program contains spaces and no separate args are provided,
+    shell-split the program string. Otherwise, return program and args as-is.
+    """
+    if " " in program and not args:
+        parts = shlex.split(program)
+        command = parts[0]
+        run_args = parts[1:]
+    else:
+        command = program
+        run_args = args
+    return command, run_args
+
+
+def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
+    """Parse command line arguments and return a CLIAction and log path."""
     parser = argparse.ArgumentParser(
-        description="PersistProc: Manage and monitor long-running processes.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Start the MCP server in the background
-  persistproc --serve &
-
-  # Run a command and tail its output (raw script output is the default).
-  persistproc sleep 30
-
-  # To view the full, timestamped log file output:
-  persistproc --raw sleep 30
-
-  # Run a command with arguments
-  persistproc python -m http.server
-""",
+        description="Process manager for multi-agent development workflows"
     )
-    parser.add_argument(
-        "--serve", action="store_true", help="Run the PersistProc MCP server."
+
+    # ------------------------------------------------------------------
+    # Logging setup (first lightweight parse just for logging config)
+    # ------------------------------------------------------------------
+    logging_parser = argparse.ArgumentParser(add_help=False)
+    logging_parser.add_argument("--data-dir", type=Path, default=get_default_data_dir())
+    logging_parser.add_argument("-v", "--verbose", action="count", default=0)
+    logging_args, _ = logging_parser.parse_known_args(argv)
+
+    log_path = setup_logging(logging_args.verbose or 0, logging_args.data_dir)
+
+    # ------------------------------------------------------------------
+    # Helper to avoid repeating common options on every sub-command
+    # ------------------------------------------------------------------
+
+    common_parser = argparse.ArgumentParser(add_help=False)
+
+    def add_common_args(p: argparse.ArgumentParser) -> None:  # noqa: D401
+        """Add --port, --data-dir and -v/--verbose options to *p* with SUPPRESS default."""
+
+        p.add_argument(
+            "--port",
+            type=int,
+            default=argparse.SUPPRESS,
+            help=f"Server port (default: {get_default_port()}; env: ${ENV_PORT})",
+        )
+        p.add_argument(
+            "--data-dir",
+            type=Path,
+            default=argparse.SUPPRESS,
+            help=f"Data directory (default: {get_default_data_dir()}; env: ${ENV_DATA_DIR})",
+        )
+        p.add_argument(
+            "-v",
+            "--verbose",
+            action="count",
+            default=argparse.SUPPRESS,
+            help="Increase verbosity; you can use -vv for more",
+        )
+
+    add_common_args(common_parser)
+
+    # Root parser should also accept the common flags so they can appear before
+    # the sub-command (e.g. `persistproc -v serve`).
+    add_common_args(parser)
+
+    # Main parser / sub-commands ------------------------------------------------
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    # Serve command
+    p_serve = subparsers.add_parser(
+        "serve", help="Start the MCP server", parents=[common_parser]
     )
-    parser.add_argument(
-        "--restart",
+
+    # Run command
+    p_run = subparsers.add_parser(
+        "run",
+        help="Make sure a process is running and tail its output (stdout and stderr) to stdout",
+        parents=[common_parser],
+    )
+    p_run.add_argument(
+        "program",
+        help="The program to run (e.g. 'python' or 'ls'). If the string contains spaces, it will be shell-split unless additional arguments are provided separately.",
+    )
+    p_run.add_argument(
+        "args", nargs=argparse.REMAINDER, help="Arguments to the program"
+    )
+    p_run.add_argument(
+        "--fresh",
         action="store_true",
-        help="Restart the process if it's already running.",
+        help="Stop an existing running instance of the same command before starting a new one.",
     )
-    parser.add_argument(
-        "--host", default="127.0.0.1", help="Host to connect to or bind to."
+    p_run.add_argument(
+        "--on-exit",
+        choices=["ask", "stop", "detach"],
+        default="ask",
+        help="Behaviour when you press Ctrl+C: ask (default), stop the process, or detach and leave it running.",
     )
-    parser.add_argument(
-        "--port", type=int, default=8947, help="Port to connect to or bind to."
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose logging."
-    )
-    parser.add_argument(
+    p_run.add_argument(
         "--raw",
         action="store_true",
-        help="Display the raw, timestamped log file content instead of the clean process output.",
+        help="Show raw timestamped log lines (default strips ISO timestamps).",
     )
-    parser.add_argument(
-        "--on-exit",
-        choices=["stop", "detach"],
-        default=None,
-        help="What to do when Ctrl+C is pressed. 'stop' will stop the process, 'detach' will leave it running. If not provided, you will be prompted.",
-    )
-    parser.add_argument(
-        "command",
-        nargs=argparse.REMAINDER,
-        help="The command to run and monitor.",
-    )
-    return parser, parser.parse_args()
 
+    # ------------------------------------------------------------------
+    # Tool sub-commands – accept *both* snake_case and kebab-case variants
+    # ------------------------------------------------------------------
 
-async def run_and_tail_async(args: argparse.Namespace):
-    """
-    Client-side function to start a process via the server and tail its logs.
-    """
-    if not args.command:
-        logger.error("No command provided to run.")
-        return
+    tools = [tool_cls() for tool_cls in ALL_TOOL_CLASSES]
 
-    command_str = " ".join(args.command)
-    mcp_url = f"http://{args.host}:{args.port}/mcp/"
+    tools_by_name: dict[str, Any] = {}
 
-    try:
-        client = Client(mcp_url)
-        async with client:
-            p_info = None
-            # Capture the calling environment to ensure commands are found on the server
-            call_env = dict(os.environ)
+    for tool in tools:
+        snake = tool.name  # canonical spelling in help
+        kebab = tool.name.replace("_", "-")  # accepted alias
 
-            # First, attempt to start the process
-            logger.debug(f"Requesting to start command: '{command_str}'")
-            start_result = await client.call_tool(
-                "start_process",
-                {
-                    "command": command_str,
-                    "working_directory": os.getcwd(),
-                    "environment": call_env,
-                },
+        # Create **one** sub-parser (canonical) and register alias via `aliases=` so it
+        # does not appear twice in `--help` output.
+        if snake not in subparsers.choices:
+            p_tool = subparsers.add_parser(
+                snake,
+                help=tool.description,
+                parents=[common_parser],
+                aliases=[kebab] if kebab != snake else [],
             )
-            start_info = json.loads(start_result[0].text)
+            tool.build_subparser(p_tool)
 
-            # Check if it was already running
-            if "error" in start_info and "is already running" in start_info["error"]:
-                pid_match = re.search(r"PID (\d+)", start_info["error"])
-                if not pid_match:
-                    logger.error(
-                        f"Server error: Could not parse PID from error message: {start_info['error']}"
-                    )
-                    sys.exit(1)
+        # Map both spellings to the same tool object for later lookup.
+        tools_by_name[snake] = tool
+        tools_by_name[kebab] = tool
 
-                existing_pid = int(pid_match.group(1))
+    # Argument parsing
+    if not argv:
+        # No arguments at all -> default to `serve`
+        args = parser.parse_args(["serve"])
+    else:
+        # Detect the first *real* command in the argv list. We iterate over the
+        # raw argument vector, skipping option flags (that start with "-") **and**
+        # their values.  If an arg immediately follows an option flag we treat it as
+        # that option's value – not as the sub-command.
 
-                if args.restart:
-                    logger.info(
-                        f"Process '{command_str}' is running (PID {existing_pid}). Restarting as requested."
-                    )
-                    restart_result = await client.call_tool(
-                        "restart_process", {"pid": existing_pid}
-                    )
-                    p_info = json.loads(restart_result[0].text)
-                else:
-                    logger.info(
-                        f"Process '{command_str}' is already running with PID {existing_pid}."
-                    )
-                    logger.info(
-                        "Tailing existing logs. Use --restart to force a new process."
-                    )
-                    status_result = await client.call_tool(
-                        "get_process_status", {"pid": existing_pid}
-                    )
-                    p_info = json.loads(status_result[0].text)
+        first_cmd: str | None = None
+        i = 0
+        while i < len(argv):
+            token = argv[i]
+            if token.startswith("-"):
+                # Heuristics for skipping option flags before we find the sub-command.
+                #
+                # 1. "-v" / "-vv" / "-vvv" are boolean count flags → no value follows.
+                if (
+                    token.lstrip("-").startswith("v")
+                    and set(token.lstrip("v-")) == set()
+                ):
+                    i += 1
+                    continue
 
-            # Check for other errors during start
-            elif "error" in start_info:
-                logger.error(
-                    f"Server returned an error on start: {start_info['error']}"
-                )
-                sys.exit(1)
+                # 2. Long-form flags like "--port" or "--data-dir" may have the value
+                #    as the *next* token unless provided as "--port=1234".
+                if token.startswith("--") and "=" not in token:
+                    # Assume next token is the value *unless* it looks like another flag.
+                    skip = (
+                        2
+                        if i + 1 < len(argv) and not argv[i + 1].startswith("-")
+                        else 1
+                    )
+                    i += skip
+                    continue
 
-            # If no error, it's a fresh start
+                # 3. Any other flag (including forms with "=") – skip just the token itself.
+                i += 1
+                continue
+
+            # Non-flag token found – treat it as the prospective sub-command.
+            first_cmd = token
+            break
+
+        # Special-case: help flag with no explicit command – display top-level
+        # help (listing all sub-commands) instead of defaulting to `serve`.
+        if first_cmd is None:
+            if any(flag in argv for flag in ("-h", "--help")):
+                # argparse will handle printing help/exit.
+                args = parser.parse_args(argv)
             else:
-                logger.info(f"Starting process '{command_str}' for the first time.")
-                p_info = start_info
+                # Only global flags were provided (or none). Assume `serve`.
+                args = parser.parse_args(["serve"] + argv)
+        elif first_cmd in subparsers.choices:
+            # Explicit command provided.
+            args = parser.parse_args(argv)
+        else:
+            # Implicit `run` command.
+            args = parser.parse_args(["run"] + argv)
 
-            # Final check on the process info we ended up with
-            if not p_info or "error" in p_info:
-                logger.error(
-                    f"Failed to get a valid process state to monitor: {p_info.get('error', 'Unknown error')}"
-                )
-                sys.exit(1)
+    # ------------------------------------------------------------
+    # Action creation – derive common option values (may be missing)
+    # ------------------------------------------------------------
 
-            pid = p_info.get("pid")
-            if not pid:
-                logger.error(f"Could not get PID from server response: {p_info}")
-                sys.exit(1)
+    port_val = getattr(args, "port", get_default_port())
+    data_dir_val = getattr(args, "data_dir", get_default_data_dir())
+    verbose_val = getattr(args, "verbose", 0)
 
-            # 2. Get log path
-            logs_result = await client.call_tool("get_process_log_paths", {"pid": pid})
-            log_paths_str = logs_result[0].text
-            if "error" in log_paths_str:
-                log_paths = json.loads(log_paths_str)
-                logger.error(
-                    f"Server returned an error on get_process_log_paths: {log_paths['error']}"
-                )
-                sys.exit(1)
-
-            log_paths = json.loads(log_paths_str)
-            combined_log_path = Path(log_paths["combined"])
-
-            # 3. Tail the log file, monitoring for restarts
-            await tail_and_monitor_process_async(
-                client, pid, command_str, combined_log_path, args, p_info
-            )
-
-    except Exception as e:
-        logger.error(
-            f"Failed to connect to persistproc server at {mcp_url}. Is it running with '--serve'?"
+    action: CLIAction
+    if args.command == "serve":
+        action = ServeAction(
+            port=port_val,
+            data_dir=data_dir_val,
+            verbose=verbose_val,
+            log_path=log_path,
         )
-        logger.debug(f"Connection details: {e}")
+    elif args.command == "run":
+        command, run_args = parse_command_and_args(args.program, args.args)
+        action = RunAction(
+            command=command,
+            run_args=run_args,
+            fresh=args.fresh,
+            on_exit=args.on_exit,
+            raw=args.raw,
+            port=port_val,
+            data_dir=data_dir_val,
+            verbose=verbose_val,
+        )
+    elif args.command in tools_by_name:
+        # Ensure tool sub-commands always have a `port` attribute so
+        # downstream code doesn't crash when the user omitted --port.
+        if not hasattr(args, "port"):
+            setattr(args, "port", port_val)
+        tool = tools_by_name[args.command]
+        action = ToolAction(args=args, tool=tool)
+    else:
+        parser.print_help()
         sys.exit(1)
 
+    return action, log_path
 
-async def tail_and_monitor_process_async(
-    client: Client,
-    initial_pid: int,
-    command_str: str,
-    initial_log_path: Path,
-    args: argparse.Namespace,
-    initial_p_info: dict = None,
-):
-    """
-    Tails a log file while monitoring the corresponding process for restarts and completion.
-    """
-    shutdown_event = asyncio.Event()
 
-    def _process_line_for_raw_output(line: str) -> Optional[str]:
-        if "[SYSTEM]" in line:
-            return None
-        return TIMESTAMP_REGEX.sub("", line, count=1)
+def handle_cli_action(action: CLIAction, log_path: Path) -> None:
+    """Execute the action determined by the CLI."""
+    CLI_LOGGER.info("Verbose log written to %s", log_path)
 
-    def _handle_sigint():
-        # This handler will be called when SIGINT is received.
-        print("\n--- Signal received, preparing to detach. ---", file=sys.stderr)
-        shutdown_event.set()
-
-    loop = asyncio.get_running_loop()
-    try:
-        loop.add_signal_handler(signal.SIGINT, _handle_sigint)
-    except NotImplementedError:
-        pass  # Not supported on all platforms (e.g. Windows)
-
-    current_pid = initial_pid
-    current_log_path = initial_log_path
-    last_known_start_time = (
-        initial_p_info.get("start_time", "") if initial_p_info else ""
-    )
-
-    # This is the main loop that allows us to follow a process through restarts.
-    while not shutdown_event.is_set():
-        # Wait for the log file to appear, which can take a moment after a restart.
-        wait_for_log_start = time.monotonic()
-        while not current_log_path.exists():
-            if time.monotonic() - wait_for_log_start > 5.0:
-                logger.error(
-                    f"Timed out waiting for log file {current_log_path} to appear."
-                )
-                return
-            await asyncio.sleep(0.1)
-
-        log_file = None
-        try:
-            log_file = current_log_path.open("r", encoding="utf-8")
-        except FileNotFoundError:
-            logger.error(
-                f"Log file {current_log_path} not found after waiting. Aborting."
-            )
-            return
-
-        print(
-            f"--- Tailing output for PID {current_pid} ('{command_str}') ---",
-            file=sys.stderr,
+    if isinstance(action, ServeAction):
+        CLI_LOGGER.info("Starting server on port %d", action.port)
+        serve(action.port, action.verbose, action.data_dir, action.log_path)
+    elif isinstance(action, RunAction):
+        CLI_LOGGER.info(
+            "Running command: %s %s", action.command, " ".join(action.run_args)
         )
-        if current_pid != initial_pid:
-            print(
-                f"--- Process was restarted. Original PID was {initial_pid}. ---",
-                file=sys.stderr,
-            )
-
-        stop_tail_event = threading.Event()
-
-        def tail_worker(raw_log: bool):
-            """The actual tailing logic that runs in a thread."""
-            try:
-                log_file.seek(0, 2)
-                while not stop_tail_event.is_set():
-                    line = log_file.readline()
-                    if not line:
-                        if stop_tail_event.is_set():
-                            break
-                        time.sleep(0.1)
-                        continue
-
-                    if raw_log:
-                        output_line = line
-                    else:
-                        output_line = _process_line_for_raw_output(line)
-
-                    if output_line is not None:
-                        sys.stdout.write(output_line)
-                        sys.stdout.flush()
-            finally:
-                if not log_file.closed:
-                    log_file.close()
-                logger.debug("Tail worker finished.")
-
-        tail_thread = threading.Thread(
-            target=tail_worker, args=(args.raw,), daemon=True
+        run(
+            action.command,
+            action.run_args,
+            action.verbose,
+            fresh=action.fresh,
+            on_exit=action.on_exit,
+            raw=action.raw,
+            port=action.port,
         )
-        tail_thread.start()
+    elif isinstance(action, ToolAction):
+        action.tool.call_with_args(action.args)
 
-        process_truly_exited = False
-        restarted_proc = None
 
-        # Main monitoring loop
-        try:
-            while tail_thread.is_alive() and not shutdown_event.is_set():
-                try:
-                    status_result = await client.call_tool(
-                        "get_process_status", {"pid": current_pid}
-                    )
-                    p_status = json.loads(status_result[0].text)
-                    if "error" in p_status or p_status.get("status") not in (
-                        "running",
-                        "starting",
-                    ):
-                        process_truly_exited = True
-                        break  # Exit monitoring loop, process is gone.
-                except Exception:
-                    logger.warning("Could not get process status. Assuming it exited.")
-                    process_truly_exited = True
-                    break
-                await asyncio.sleep(1.0)  # Polling interval
-
-            if shutdown_event.is_set():
-                # User-initiated shutdown
-                break
-
-            if process_truly_exited:
-                list_res = await client.call_tool("list_processes", {})
-                all_procs = json.loads(list_res[0].text)
-                restarted_proc = find_restarted_process(
-                    all_procs, command_str, last_known_start_time
-                )
-
-                if restarted_proc:
-                    current_pid = restarted_proc["pid"]
-                    last_known_start_time = restarted_proc["start_time"]
-                    logs_result = await client.call_tool(
-                        "get_process_log_paths", {"pid": current_pid}
-                    )
-                    log_paths = json.loads(logs_result[0].text)
-                    current_log_path = Path(log_paths["combined"])
-                    # Continue the outer `while` to start tailing the new process
-                else:
-                    logger.info("Process has exited and was not restarted.")
-                    break  # Exit the outer `while` loop
-        finally:
-            # Cleanly stop the tailing thread
-            stop_tail_event.set()
-            tail_thread.join(timeout=2.0)
-
-    # After the main loop, decide what to do on user-initiated exit
-    if shutdown_event.is_set():
-        logger.debug("Shutdown event received, deciding action.")
-        should_stop = False
-        if args.on_exit == "stop":
-            should_stop = True
-        elif args.on_exit == "detach":
-            should_stop = False
-        elif sys.stdin.isatty():
-            try:
-                stop_choice = input(
-                    f"Stop running process '{command_str}' (PID {current_pid})? [y/N] "
-                )
-                if stop_choice.lower() == "y":
-                    should_stop = True
-            except (EOFError, KeyboardInterrupt):
-                print()  # Print a newline to make output cleaner
-                should_stop = False
-
-        if should_stop:
-            print(f"--- Stopping process {current_pid}... ---", file=sys.stderr)
-            try:
-                await client.call_tool("stop_process", {"pid": current_pid})
-            except Exception as e:
-                logger.error(f"Failed to stop process {current_pid}: {e}")
-        else:
-            print(
-                "\n--- Detaching from log tailing. Process remains running. ---",
-                file=sys.stderr,
-            )
-
-    # Cleanup signal handler
+def cli() -> None:
+    """Main CLI entry point."""
     try:
-        loop.remove_signal_handler(signal.SIGINT)
-    except NotImplementedError:
-        pass
+        action, log_path = parse_cli(sys.argv[1:])
+        handle_cli_action(action, log_path)
+    except SystemExit as e:
+        if e.code != 0:
+            # argparse prints help and exits, so we only need to re-raise for actual errors
+            raise
 
 
-def find_restarted_process(
-    processes: list, command_str: str, last_known_start_time: str
-):
-    """
-    Given a list of processes, find one that looks like a restart of our target.
-    A restarted process will have the same command string but a start_time
-    that is newer than the last one we knew about.
-    """
-    for p in processes:
-        if p.get("command") == command_str:
-            # Check if the process is running and has a start time after the one we last saw.
-            # This handles cases where multiple copies of the same command might exist.
-            if (
-                p.get("status") == "running"
-                and p.get("start_time", "") > last_known_start_time
-            ):
-                return p
-    return None
-
-
-def run_client(args: argparse.Namespace):
-    """Run the client-side CLI."""
-    from .utils import setup_logging
-
-    setup_logging(args.verbose)
-
-    try:
-        asyncio.run(run_and_tail_async(args))
-    except KeyboardInterrupt:
-        # Ensure graceful exit code (0) even if Ctrl+C is received very early,
-        # before our inner async handlers have a chance to catch it. This
-        # avoids negative return codes (-2) that cause CI test failures.
-        print(
-            "\n--- Detaching from log tailing. Process remains running. ---",
-            file=sys.stderr,
-        )
-        sys.exit(0)
+__all__ = [
+    "cli",
+    "parse_cli",
+    "handle_cli_action",
+    "ServeAction",
+    "RunAction",
+    "ToolAction",
+    "CLIAction",
+]

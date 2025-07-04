@@ -1,250 +1,203 @@
-import os
-import shutil
-import tempfile
-import threading
-import time
+import logging
+import sys
 from pathlib import Path
-from unittest.mock import Mock, patch
+from typing import Iterable
+import signal
 import socket
-import uvicorn
-from persistproc.server import create_app, run_server
-from persistproc.utils import get_app_data_dir
-import persistproc.server
-from fastmcp.client import Client
+import random
+import os
+from datetime import datetime
+import uuid
 
 import pytest
-import pytest_asyncio
-import anyio
+
+from tests.helpers import start_persistproc, stop_run
+
+LOG_PATTERN = "persistproc.run.*.log"
+
+ENV_PORT = "PERSISTPROC_PORT"
+ENV_DATA_DIR = "PERSISTPROC_DATA_DIR"
 
 
-@pytest.fixture(scope="session")
-def free_port():
-    """Finds a free port for the test server to listen on."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
+def _find_latest_log(dirs: Iterable[Path]) -> Path | None:
+    """Return the most recently modified log file among *dirs* (recursive)."""
+    latest: Path | None = None
+    for base in dirs:
+        if not base.exists():
+            continue
+        for path in base.rglob(LOG_PATTERN):
+            if latest is None or path.stat().st_mtime > latest.stat().st_mtime:
+                latest = path
+    return latest
 
 
-@pytest.fixture(scope="session")
-def live_server_url(free_port, temp_dir_session, monkeypatch_session):
-    """Starts a live server in a thread and provides its URL."""
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_runtest_makereport(item, call):  # noqa: D401 – pytest hook
+    # Let pytest perform its normal processing first.
+    outcome = yield
+    rep = outcome.get_result()
 
-    monkeypatch_session.setattr(
-        "persistproc.server.get_app_data_dir", lambda name: temp_dir_session
-    )
-    # Prevent signal handlers from being set up in the test thread
-    monkeypatch_session.setattr(
-        "persistproc.server.setup_signal_handlers", lambda: None
-    )
+    # Only act after the *call* phase and when the test has failed.
+    if rep.when != "call" or rep.passed:
+        return
 
-    server_thread = threading.Thread(
-        target=run_server,
-        kwargs={"host": "127.0.0.1", "port": free_port},
-        daemon=True,
-    )
-    server_thread.start()
+    # Collect candidate directories to search.
+    candidate_dirs: list[Path] = []
 
-    # Poll the server to wait for it to be ready
-    start_time = time.time()
-    while time.time() - start_time < 10:  # 10-second timeout
-        try:
-            with socket.create_connection(("127.0.0.1", free_port), timeout=0.1):
-                break
-        except (socket.timeout, ConnectionRefusedError):
-            time.sleep(0.1)
-    else:
-        pytest.fail("Server did not start within 10 seconds.")
+    # Common temporary directory fixtures.
+    for fixture_name in ("tmp_path", "tmp_path_factory"):
+        if fixture_name in item.funcargs:
+            fixture_val = item.funcargs[fixture_name]
+            if isinstance(fixture_val, Path):
+                candidate_dirs.append(fixture_val)
+            elif hasattr(fixture_val, "getbasetemp"):
+                # tmp_path_factory
+                candidate_dirs.append(Path(fixture_val.getbasetemp()))
 
-    # Wait for the process_manager to be initialized
-    while persistproc.server.process_manager is None:
-        time.sleep(0.1)
+    # Environment override allows tests to specify additional locations.
+    extra_dir = item.config.getoption("--persistproc-data-dir", default=None)
+    if extra_dir:
+        candidate_dirs.append(Path(extra_dir))
 
-    # --- New: Probe the MCP endpoint to ensure the server lifespan is fully started ---
-    # The TCP port may be open before FastMCP's StreamableHTTP session manager finishes
-    # its lifespan startup. Attempt a lightweight MCP request via the async client until
-    # it succeeds to avoid race-conditions that manifest as intermittent 500 responses.
+    # Always include repository-level artifacts directory if present.
+    repo_artifacts = Path(__file__).parent / "_artifacts"
+    candidate_dirs.append(repo_artifacts)
 
-    async def _probe_until_ready(url: str, retries: int = 80):
-        """Attempt to connect to the MCP endpoint until it responds without 5xx.
+    latest_log = _find_latest_log(candidate_dirs)
 
-        The default startup time of uvicorn + FastMCP on slower CI runners can
-        occasionally exceed the previous 5-second window. Increasing retries
-        makes the probe far more reliable across Python versions and hardware
-        classes.
-        """
-        for _ in range(retries):
-            try:
-                async with Client(f"{url}/mcp/") as probe_client:
-                    await probe_client.call_tool("list_processes", {})
-                    # require a second successive success to be extra sure
-                    await anyio.sleep(0.15)
-                    await probe_client.call_tool("list_processes", {})
-                    return  # double-green: server ready
-            except Exception:
-                await anyio.sleep(0.25)
-        # If we exhaust retries, raise so the fixture fails fast with a clearer message.
-        raise RuntimeError(
-            "PersistProc test server failed to start within the allotted time."
-        )
+    if latest_log is None:
+        rep.sections.append(("persistproc-log", "[no log file found]"))
+        return
 
-    anyio.run(_probe_until_ready, f"http://127.0.0.1:{free_port}")
-
-    # Ensure monitor thread is stopped after tests
-    yield f"http://127.0.0.1:{free_port}"
-    persistproc.server.process_manager.stop_monitor_thread()
-
-
-@pytest.fixture(scope="session")
-def temp_dir_session():
-    """Provides a temporary directory for the whole test session."""
-    temp_path = Path(tempfile.mkdtemp())
-    yield temp_path
-    shutil.rmtree(temp_path, ignore_errors=True)
-
-
-@pytest.fixture(scope="session")
-def monkeypatch_session():
-    from _pytest.monkeypatch import MonkeyPatch
-
-    mpatch = MonkeyPatch()
-    yield mpatch
-    mpatch.undo()
-
-
-@pytest.fixture
-def temp_dir(temp_dir_session):
-    """Provides a temporary directory that's cleaned up after the test."""
-    temp_path = Path(tempfile.mkdtemp(dir=temp_dir_session))
-    yield temp_path
-    shutil.rmtree(temp_path, ignore_errors=True)
-
-
-@pytest.fixture
-def process_manager(temp_dir):
-    """Provides a ProcessManager instance for testing."""
-    from persistproc.core import ProcessManager
-
-    with patch("persistproc.core.ProcessManager._monitor_processes"):
-        pm = ProcessManager(log_directory=temp_dir)
-        yield pm
-        pm.stop_monitor_thread()
-
-
-@pytest.fixture
-def mcp_server(process_manager):
-    """Provides an in-memory MCP server instance for testing."""
-    with patch("persistproc.server.setup_signal_handlers", lambda: None):
-        app = create_app(process_manager)
-        return app
-
-
-@pytest_asyncio.fixture
-async def live_mcp_client(live_server_url):
-    """Provides a client connected to the live test server."""
-    client = Client(f"{live_server_url}/mcp/")
-    await client.__aenter__()
     try:
-        yield client
-    finally:
-        import httpx, asyncio
+        contents = latest_log.read_text(encoding="utf-8")
+    except Exception as exc:  # pragma: no cover – best-effort
+        contents = f"<error reading log file {latest_log}: {exc}>"
 
-        try:
-            await client.__aexit__(None, None, None)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code >= 500:
-                # Ignore transient server error during teardown
-                await asyncio.sleep(0.1)
-            else:
-                raise
+    # Attach as an additional section so `-vv` shows it nicely; also write to
+    # stderr immediately so it appears even with minimal verbosity.
+    rep.sections.append(("persistproc-log", contents))
+    sys.stderr.write("\n==== persistproc server log (latest) ====\n")
+    sys.stderr.write(contents)
+    sys.stderr.write("\n==== end of persistproc server log ====\n\n")
 
 
-@pytest.fixture
-def mock_app_data_dir(temp_dir, monkeypatch):
-    """Mocks the APP_DATA_DIR to use a temporary directory."""
-    # These constants are now computed dynamically in utils.py
-    # No need to patch them directly
-    return temp_dir
+@pytest.fixture(autouse=True)
+def _enforce_timeout(request):
+    """Fail tests that run longer than the allowed time.
 
+    Default timeout is 30 seconds unless a test is marked with
+    ``@pytest.mark.timeout(N)`` specifying a custom limit.
+    """
 
-@pytest.fixture
-def mock_subprocess():
-    """Provides a mock subprocess.Popen that doesn't actually start processes."""
-    with patch("persistproc.core.subprocess.Popen") as mock_popen:
-        mock_proc = Mock()
-        mock_proc.pid = 12345
-        mock_proc.poll.return_value = None  # Process is running
-        mock_proc.stdout = Mock()
-        mock_proc.stderr = Mock()
-        mock_proc.stdout.readline.return_value = b""
-        mock_proc.stderr.readline.return_value = b""
-        mock_popen.return_value = mock_proc
-        yield mock_popen, mock_proc
+    marker = request.node.get_closest_marker("timeout")
+    timeout = int(marker.args[0]) if marker and marker.args else 30
 
-
-@pytest.fixture
-def sample_command():
-    """Provides a sample command string for testing."""
-    return "echo hello world"
-
-
-@pytest.fixture
-def mock_process_info():
-    """Provides sample ProcessInfo data for testing."""
-    from persistproc.core import ProcessInfo
-
-    return ProcessInfo(
-        pid=12345,
-        command="echo hello",
-        start_time="2023-01-01T12:00:00.000Z",
-        status="running",
-        log_prefix="12345.echo_hello",
-        working_directory="/tmp",
-        environment={"TEST": "value"},
-    )
-
-
-@pytest.fixture
-def no_monitor_thread():
-    """Prevents the ProcessManager monitor thread from starting during tests."""
-    with patch("persistproc.core.ProcessManager._monitor_processes"):
+    # Skip if timeout is non-positive or SIGALRM unavailable (e.g. Windows).
+    if timeout <= 0 or sys.platform.startswith("win"):
         yield
+        return
+
+    def _alarm_handler(signum, frame):  # noqa: D401 – signal handler
+        pytest.fail(f"Test timed out after {timeout} seconds", pytrace=False)
+
+    previous = signal.signal(signal.SIGALRM, _alarm_handler)  # type: ignore[arg-type]
+    signal.alarm(timeout)
+
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)  # type: ignore[arg-type]
+
+
+@pytest.fixture(autouse=True)
+def _persistproc_env(monkeypatch):
+    """Configure default data dir and port for *persistproc* CLI/tests.
+
+    This eliminates the need for per-test boilerplate – the CLI picks up these
+    settings via environment variables automatically.
+    """
+
+    # ------------------------------------------------------------------
+    # Data directory – keep within repository under *tests/_artifacts* so
+    # developers can inspect logs easily.  Ensure uniqueness to avoid clashes
+    # between concurrent/parameterised tests.
+    # ------------------------------------------------------------------
+
+    artifacts_root = Path(__file__).parent / "_artifacts"
+    artifacts_root.mkdir(parents=True, exist_ok=True)
+
+    unique = (
+        f"data_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:6]}"
+    )
+    data_dir = artifacts_root / unique
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv(ENV_DATA_DIR, str(data_dir))
+
+    # ------------------------------------------------------------------
+    # Port – select a currently-available TCP port.
+    # ------------------------------------------------------------------
+    def _choose_free_port() -> int:
+        for _ in range(50):  # try up to 50 random ports
+            port = random.randint(20000, 50000)
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                try:
+                    sock.bind(("127.0.0.1", port))
+                except OSError:
+                    continue  # in use – pick another
+                return port
+        # Fallback – let the OS pick an unused port (port 0) then reuse it.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            return sock.getsockname()[1]
+
+    port = _choose_free_port()
+    monkeypatch.setenv(ENV_PORT, str(port))
+
+    yield
+
+    # Cleanup: monkeypatch context manager restores env automatically.
 
 
 @pytest.fixture
-def mock_killpg():
-    """Mocks Unix process killing."""
-    with (
-        patch("persistproc.core.os.killpg") as mock_kill_unix,
-        patch("persistproc.core.os.getpgid", return_value=12345) as mock_getpgid,
-    ):
-        yield {
-            "unix_kill": mock_kill_unix,
-            "getpgid": mock_getpgid,
-        }
-
-
-class MockServer:
-    """A mock MCP server for testing."""
-
-    def __init__(self):
-        self.tools = {}
-        self.running = False
-
-    def tool(self, name=None):
-        def decorator(func):
-            tool_name = name or func.__name__
-            self.tools[tool_name] = func
-            return func
-
-        return decorator
-
-    def run(self, **kwargs):
-        self.running = True
-        # Simulate server running briefly
-        time.sleep(0.1)
+def persistproc_data_dir() -> Path:
+    """Return the data directory configured for *persistproc* in this test."""
+    val = os.environ.get(ENV_DATA_DIR)
+    if not val:
+        raise RuntimeError("PERSISTPROC_DATA_DIR not set by _persistproc_env")
+    return Path(val)
 
 
 @pytest.fixture
-def mock_mcp_server():
-    """Provides a mock MCP server for testing."""
-    return MockServer()
+def persistproc_port() -> int:
+    """Return the TCP port allocated for *persistproc* in this test."""
+    val = os.environ.get(ENV_PORT)
+    if not val:
+        raise RuntimeError("PERSISTPROC_PORT not set by _persistproc_env")
+    return int(val)
+
+
+# ---------------------------------------------------------------------------
+# Helper fixtures for starting/stopping the persistproc server used in e2e tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def persistproc_server():
+    """Start a persistproc server for the duration of one test."""
+    proc = start_persistproc()
+    yield proc
+    stop_run(proc)
+
+
+@pytest.fixture
+def server(persistproc_server):  # alias for convenience
+    return persistproc_server
+
+
+@pytest.fixture
+def logging_config():
+    # disable httpcore.http11
+    logging.getLogger("httpcore.http11").setLevel(logging.WARNING)
