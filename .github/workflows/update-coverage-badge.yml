@@ -30,7 +30,7 @@ jobs:
         uses: tj-actions/coverage-badge-py@v2
         with:
           json-path: ./coverage.json
-          output-path: ./README.md
+          output: coverage.svg
           style: flat
 
       - name: Create Pull Request
@@ -38,10 +38,10 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "docs(readme): Update test coverage badge"
+          commit-message: "docs: Update test coverage badge (coverage.svg)"
           title: "Docs: Update Test Coverage Badge"
           body: |
-            The test coverage badge in the README has been automatically updated
+            The test coverage badge (coverage.svg) has been automatically updated
             to reflect the latest coverage percentage on the `main` branch.
           branch: "update-coverage-badge"
           delete-branch: true
