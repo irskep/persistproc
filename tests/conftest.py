@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -194,3 +195,9 @@ def persistproc_server():
 @pytest.fixture
 def server(persistproc_server):  # alias for convenience
     return persistproc_server
+
+
+@pytest.fixture
+def logging_config():
+    # disable httpcore.http11
+    logging.getLogger("httpcore.http11").setLevel(logging.WARNING)
