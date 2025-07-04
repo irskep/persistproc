@@ -3,6 +3,7 @@
 A shared process layer for multi-agent development workflows
 
 [![PyPI version](https://badge.fury.io/py/persistproc.svg)](https://badge.fury.io/py/persistproc)
+[![Test Coverage](https://img.shields.io/badge/coverage-79%25-brightgreen.svg)](https://shields.io/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -11,19 +12,30 @@ A shared process layer for multi-agent development workflows
 
 ## What is `persistproc`?
 
-When developing locally, you often need long-running processes like web servers, bundlers, or test watchers. Depending on where you start these processes, agents may or may not have access to them. If you start your web server from Cursor, then Claude Code can't see its output. If you prefer to run things in iTerm instead of the Cursor terminal, then Cursor's agents can't see or control the server process.
+Persistproc is an MCP server which lets agents and humans see and control long-running processes like web servers. The goal is to reduce the amount of copying and pasting you need to do, make it easier for you to use multiple agents, and be tool-agnostic.
 
-`persistproc` is an MCP server and command line tool which lets processes be started, inspected, and controlled from any terminal or agent. If you start your web server in iTerm, then Claude Code and Cursor can see its output and stop or restart it. An agent can also start a long-running process that you can then easily start watching the output of in your terminal.
+There is no config file. Processes are managed entirely at runtime. This is not a replacement for supervisord.
 
-Here's how it works:
+### Example use case: basic web development
 
-1.  Run `persistproc serve` once.
-2.  Use an agent, or the `persistproc` command, to start your development tasks (e.g., `persistproc npm run dev`, or "Hey claude, run `npm run dev` using persistproc").
-3.  Your AI agent, connected to the server, can now manage that process for you—restarting it after it makes a code change, or reading its logs to debug an issue—without needing to interrupt you or ask for terminal access. It doesn't matter if you or the agent started the process.
+Suppose you're working on a todo list app, and it has a dev server you normally start with `npm run dev`. This server watches your code for changes, typechecks it, lints it, and hot-reloads the page. When there's an error, it prints the error to your terminal.
 
-This creates a seamless workflow where the agent can autonomously manage the development environment in the background.
+If you're working with an LLM agent such as Cursor or Claude Code, if you see an error, you might copy/paste it from your terminal to the agent and ask how to fix it. Then the agent might make some changes, and maybe you hit another error, so you copy/paste again, and the agent makes another change…etc.
 
-There is no config file. Processes are managed entirely at runtime. This is not an replacement for supervisord.
+If the agent could see the changes directly, you wouldn't need to do anything! With persistproc, that's possible. Instead of saying `npm run dev`, say `persistproc npm run dev`, and the agent can instantly read its output or even restart it. Otherwise, you can still see its output in your original terminal, and kill it with Ctrl+C, like your normally do.
+
+### Example use case: complex web development
+
+Suppose you need to run four processes to get your web app working locally. Maybe an API, frontend server, SCSS builder, and Postgres. Each service emits its own logs.
+
+If you run into an error while testing locally, you can go read all four log files to find out what happened.
+
+But if you started those processes with persistproc, then the agent can read everything at once and possibly give you a quicker diagnosis.
+
+### Why not just use Cursor and let the agent open a terminal?
+
+1. Not everyone likes using the terminal in Cursor/VSCode. Engineers have many different workflows.
+2. _Only_ Cursor's agents can see the process, not Claude Code, Gemini CLI, etc.
 
 ## Available Tools
 
@@ -48,7 +60,7 @@ The server exposes the following tools:
 pip install persistproc
 ```
 
-### 2. Start the Server
+### 2. Start the server and configure your agent
 
 Run this in a dedicated terminal and leave it running.
 
@@ -56,31 +68,9 @@ Run this in a dedicated terminal and leave it running.
 persistproc serve
 ```
 
-The server will log its own status to stdout and manage processes.
+The first thing `persistproc serve` outputs is configuration instructions for various agents, so follow those instructions if you haven't already.
 
-### 3. Configure Your AI Agent
-
-To allow an AI agent to control these processes, configure its MCP client to point to the `persistproc` server.
-
-#### Cursor (in `.cursor/mcp.json`)
-
-```json
-{
-  "mcp.servers": {
-    "persistproc": {
-      "url": "http://127.0.0.1:8947/mcp/"
-    }
-  }
-}
-```
-
-#### Claude Code
-
-```sh
-claude mcp add --transport http persistproc http://127.0.0.1:8947/mcp/
-```
-
-### 2. Start a Process
+### 3. Start a Process
 
 In another terminal, `cd` to your project's directory and run your command via `persistproc`.
 
@@ -92,7 +82,9 @@ persistproc npm run dev
 
 The command is sent to the server, and its output is streamed to your terminal. You can safely close this terminal, and the process will continue to run.
 
-Alternatively, just ask your agent to "run your dev server using persistproc," and it will probably find the right command by looking at your `package.json` file and run it using `persistproc`.
+
+> [!TIP]
+> Or just ask your agent to "run your dev server using persistproc," and it will probably find the right command by looking at your `package.json` file and run it using `persistproc`.
 
 With this, your agent can now use the available tools to manage your development environment.
 
@@ -111,7 +103,7 @@ Once your agent is connected, you can ask it to manage your processes. Assuming 
 
 ## Development
 
-Use `./run-in-venv.sh` to install dependencies in a virtualenv and run `persistproc`.
+Run persistproc in a fully configured virtualenv with `./pp`. Run other commands such as `pytest` in a virtualenv with `./run-in-venv.sh`.
 
 ## License
 

@@ -18,10 +18,12 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: ./run-in-venv.sh pip install coverage
+        run: |
+          pip install .[dev]
+          pip install coverage
 
       - name: Run tests and generate coverage report
-        run: ./run-in-venv.sh pytest --cov --cov-report=json:coverage.json
+        run: pytest --cov --cov-report=json:coverage.json
 
       - name: Update coverage badge
         uses: tj-actions/coverage-badge-py@v2
