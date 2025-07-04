@@ -7,6 +7,30 @@ from pathlib import Path
 CLI_LOGGER_NAME = "persistproc.cli"
 
 
+class CustomFormatter(logging.Formatter):
+
+    regular = "\x1b[37;20m"
+    grey = "\x1b[90;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    format = "%(message)s"
+
+    FORMATS = {
+        logging.DEBUG: grey + format + reset,
+        logging.INFO: grey + format + reset,
+        logging.WARNING: regular + format + reset,
+        logging.ERROR: yellow + format + reset,
+        logging.CRITICAL: bold_red + format + reset,
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+
 def setup_logging(verbosity: int, data_dir: Path) -> Path:
     """Configure logging for the current *persistproc* invocation.
 
@@ -67,7 +91,7 @@ def setup_logging(verbosity: int, data_dir: Path) -> Path:
         # Show DEBUG from *all* loggers.
         console_handler.setLevel(logging.DEBUG)
 
-    console_handler.setFormatter(logging.Formatter("%(message)s"))
+    console_handler.setFormatter(CustomFormatter())
     root_logger.addHandler(console_handler)
 
     # By configuring the root logger, child loggers (like `uvicorn` or

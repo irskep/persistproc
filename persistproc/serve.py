@@ -5,10 +5,11 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
+from .logging_utils import CLI_LOGGER
 from .tools import ALL_TOOL_CLASSES
 from .process_manager import ProcessManager
 
-logger = logging.getLogger("persistproc.cli")
+logger = logging.getLogger(__name__)
 
 __all__ = ["serve"]
 
@@ -41,7 +42,6 @@ def serve(
     current thread until the server is stopped (eg. via *Ctrl+C*).
     """
 
-    logger.info("Starting MCP server on http://127.0.0.1:%d", port)
     logger.debug("Verbose level requested: %d", verbose)
 
     # The server blocks in the foreground until interrupted.
@@ -49,6 +49,8 @@ def serve(
     pm = ProcessManager()
     pm.bootstrap(data_dir, server_log_path=log_path)
     app = _build_app(pm)
+
+    CLI_LOGGER.warning("Starting MCP server on http://127.0.0.1:%d", port)
 
     # FastMCP provides an ASGI app with convenience *run* method similar to
     # FastAPI's.  The call blocks until the server exits.

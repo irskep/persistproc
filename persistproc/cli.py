@@ -321,7 +321,6 @@ def handle_cli_action(action: CLIAction, log_path: Path) -> None:
     CLI_LOGGER.info("Verbose log written to %s", log_path)
 
     if isinstance(action, ServeAction):
-        CLI_LOGGER.info("Starting server on port %d", action.port)
         serve(action.port, action.verbose, action.data_dir, action.log_path)
     elif isinstance(action, RunAction):
         CLI_LOGGER.info(
