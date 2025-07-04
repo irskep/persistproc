@@ -33,6 +33,4 @@ black .
 # Change back to the original directory before running the user's command
 cd "$ORIGINAL_CWD"
 
-echo "Running persistproc..."
-
 persistproc "$@"
