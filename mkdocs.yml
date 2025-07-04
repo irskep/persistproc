@@ -61,6 +61,7 @@ plugins:
         python:
           options:
             docstring_style: sphinx
+  - gh-admonitions
 
 nav:
   - Home: index.md
