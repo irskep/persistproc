@@ -108,15 +108,26 @@ def start_run(cmd_tokens: list[str], *, on_exit: str = "stop") -> subprocess.Pop
     )
 
 
-def stop_run(proc: subprocess.Popen[str], timeout: float = 60.0) -> None:
+def stop_run(proc: subprocess.Popen[str], timeout: float = 15.0) -> None:
     """Stop a subprocess by sending SIGINT and waiting up to timeout seconds."""
     if proc.poll() is not None:
         return
 
-    # Send SIGINT and wait for process to stop
+    # Send SIGINT to trigger the graceful shutdown logic in `run.py`.
     proc.send_signal(signal.SIGINT)
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            return
-        time.sleep(0.1)
+
+    try:
+        # Wait for the process to terminate. The `run` command's own logic
+        # can take several seconds to complete, especially when stopping a
+        # child process, so we need a generous timeout here to avoid killing
+        # it prematurely, which was the source of test flakes.
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # If it's still alive, force-kill it.
+        print(f"Process {proc.pid} did not exit after {timeout}s, killing.")
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()  # Fallback
+        finally:
+            proc.wait(timeout=5.0)
