@@ -4,9 +4,6 @@ set -e
 # Copy README.md to docs/index.md
 cp README.md docs/index.md
 
-# Copy coverage.svg to docs/
-cp coverage.svg docs/coverage.svg
-
 # Remove the 'full docs:' link line
 sed -i.bak '/> Full docs:/d' docs/index.md
 
