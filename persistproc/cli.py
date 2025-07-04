@@ -108,9 +108,12 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
     logging_parser = argparse.ArgumentParser(add_help=False)
     logging_parser.add_argument("--data-dir", type=Path, default=get_default_data_dir())
     logging_parser.add_argument("-v", "--verbose", action="count", default=0)
+    logging_parser.add_argument("-q", "--quiet", action="count", default=0)
     logging_args, _ = logging_parser.parse_known_args(argv)
 
-    log_path = setup_logging(logging_args.verbose or 0, logging_args.data_dir)
+    log_path = setup_logging(
+        logging_args.verbose - logging_args.quiet, logging_args.data_dir
+    )
 
     # ------------------------------------------------------------------
     # Helper to avoid repeating common options on every sub-command
@@ -139,6 +142,13 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
             action="count",
             default=argparse.SUPPRESS,
             help="Increase verbosity; you can use -vv for more",
+        )
+        p.add_argument(
+            "-q",
+            "--quiet",
+            action="count",
+            default=argparse.SUPPRESS,
+            help="Decrease verbosity. Passing -q once will show only warnings and errors.",
         )
 
     add_common_args(common_parser)
@@ -237,6 +247,13 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
                 ):
                     i += 1
                     continue
+                # 1b. "-q" / "-qq" / "-qqq" are boolean count flags → no value follows.
+                if (
+                    token.lstrip("-").startswith("q")
+                    and set(token.lstrip("q-")) == set()
+                ):
+                    i += 1
+                    continue
 
                 # 2. Long-form flags like "--port" or "--data-dir" may have the value
                 #    as the *next* token unless provided as "--port=1234".
@@ -280,7 +297,8 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
 
     port_val = getattr(args, "port", get_default_port())
     data_dir_val = getattr(args, "data_dir", get_default_data_dir())
-    verbose_val = getattr(args, "verbose", 0)
+    verbose_val = getattr(args, "verbose", 0) - getattr(args, "quiet", 0)
+    print(f"verbose_val: {verbose_val}")
 
     action: CLIAction
     if args.command == "serve":
@@ -318,7 +336,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
 
 def handle_cli_action(action: CLIAction, log_path: Path) -> None:
     """Execute the action determined by the CLI."""
-    CLI_LOGGER.info("Verbose log written to %s", log_path)
+    CLI_LOGGER.info("Verbose log for this run: %s", shlex.quote(str(log_path)))
 
     if isinstance(action, ServeAction):
         serve(action.port, action.verbose, action.data_dir, action.log_path)

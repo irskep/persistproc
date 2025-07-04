@@ -20,8 +20,6 @@ try:
 except ImportError:
     HAS_TERMIOS = False
 
-from fastmcp.client import Client
-
 from persistproc.client import make_client
 from persistproc.logging_utils import CLI_LOGGER
 
@@ -193,8 +191,9 @@ async def _start_or_get_process_via_mcp(
                         },
                     )
                     start_info = json.loads(start_res[0].text)
-                    if start_info.get("error"):
-                        raise RuntimeError(start_info["error"])
+                    if start_info["error"]:
+                        CLI_LOGGER.error(start_info["error"])
+                        raise SystemExit(1)
                     pid = start_info["pid"]
                 else:
                     pid = existing["pid"]

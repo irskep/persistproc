@@ -24,10 +24,11 @@ class StreamEnum(str, Enum):
 
 @dataclass
 class StartProcessResult:
-    pid: int
-    log_stdout: str
-    log_stderr: str
-    log_combined: str
+    pid: int | None = None
+    log_stdout: str | None = None
+    log_stderr: str | None = None
+    log_combined: str | None = None
+    error: str | None = None
 
 
 @dataclass
