@@ -33,10 +33,11 @@ If you run into an error while testing locally, you can go read all four log fil
 
 But if you started those processes with persistproc, then the agent can read everything at once and possibly give you a quicker diagnosis.
 
-### Why not just use Cursor and let the agent open a terminal?
-
-1. Not everyone likes using the terminal in Cursor/VSCode. Engineers have many different workflows.
-2. _Only_ Cursor's agents can see the process, not Claude Code, Gemini CLI, etc.
+> [!NOTE]
+> **Why not just use Cursor and let the agent open a terminal?**
+>
+> 1. Not everyone likes using the terminal in Cursor/VSCode. Engineers have many different workflows.
+> 2. _Only_ Cursor's agents can see the process, not Claude Code, Gemini CLI, etc.
 
 ## Available Tools
 
@@ -44,14 +45,16 @@ But if you started those processes with persistproc, then the agent can read eve
 
 The server exposes the following tools:
 
-*   `start(command: str, working_directory: str = None, environment: dict = None)`: Start a new long-running process.
-*   `list()`: List all managed processes and their status.
-*   `get_status(pid: int)`: Get the detailed status of a specific process.
-*   `stop(pid: int, command: str = None, working_directory: str = None, force: bool = False)`: Stop a running process by its PID.
-*   `restart(pid: int, command: str = None, working_directory: str = None)`: Stops a process and starts it again with the same parameters.
-*   `get_output(pid: int, stream: str, lines: int = None, before_time: str = None, since_time: str = None)`: Retrieve captured output from a process.
-*   `get_log_paths(pid: int)`: Get the paths to the log files for a specific process.
-*   `kill_persistproc()`: Kill all managed processes and get the PID of the persistproc server.
+| Tool | Description |
+| --- | --- |
+| `start(command: str, working_directory: str = None, environment: dict = None)` | Start a new long-running process. |
+| `list()` | List all managed processes and their status. |
+| `get_status(pid: int)` | Get the detailed status of a specific process. |
+| `stop(pid: int, command: str = None, working_directory: str = None, force: bool = False)` | Stop a running process by its PID. |
+| `restart(pid: int, command: str = None, working_directory: str = None)` | Stops a process and starts it again with the same parameters. |
+| `get_output(pid: int, stream: str, lines: int = None, before_time: str = None, since_time: str = None)` | Retrieve captured output from a process. |
+| `get_log_paths(pid: int)` | Get the paths to the log files for a specific process. |
+| `kill_persistproc()` | Kill all managed processes and get the PID of the persistproc server. |
 
 ## Getting started
 
