@@ -82,46 +82,44 @@ def test_parse_cli_run_with_quoted_string(mock_setup_logging):
 
 
 def test_parse_cli_tool_command(mock_setup_logging):
-    """Test `persistproc start_process ...`."""
-    action, _ = parse_cli(["start_process", "sleep 10"])
+    """Test `persistproc start ...`."""
+    action, _ = parse_cli(["start", "sleep 10"])
     assert isinstance(action, ToolAction)
     assert isinstance(action.args, Namespace)
-    assert action.args.command == "start_process"
+    assert action.args.command == "start"
     assert action.args.command_ == "sleep 10"
 
 
 def test_parse_cli_tool_with_common_args(mock_setup_logging):
     """Test tool command with shared arguments like --port."""
-    action, _ = parse_cli(["list_processes", "--port", "9999"])
+    action, _ = parse_cli(["list", "--port", "9999"])
     assert isinstance(action, ToolAction)
     assert action.args.port == 9999
 
 
 def test_parse_cli_restart_process_by_pid(mock_setup_logging):
-    """Test `persistproc restart_process 123`."""
-    action, _ = parse_cli(["restart_process", "123"])
+    """Test `persistproc restart 123`."""
+    action, _ = parse_cli(["restart", "123"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "restart_process"
+    assert action.tool.name == "restart"
     assert action.args.command_or_pid == "123"
     assert not action.args.args
 
 
 def test_parse_cli_restart_process_by_command(mock_setup_logging):
-    """Test `persistproc restart_process sleep 10`."""
-    action, _ = parse_cli(["restart_process", "sleep", "10"])
+    """Test `persistproc restart sleep 10`."""
+    action, _ = parse_cli(["restart", "sleep", "10"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "restart_process"
+    assert action.tool.name == "restart"
     assert action.args.command_or_pid == "sleep"
     assert action.args.args == ["10"]
 
 
 def test_parse_cli_restart_process_by_command_and_cwd(mock_setup_logging):
-    """Test `persistproc restart_process sleep 10 --working-directory /tmp`."""
-    action, _ = parse_cli(
-        ["restart_process", "sleep", "10", "--working-directory", "/tmp"]
-    )
+    """Test `persistproc restart sleep 10 --working-directory /tmp`."""
+    action, _ = parse_cli(["restart", "sleep", "10", "--working-directory", "/tmp"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "restart_process"
+    assert action.tool.name == "restart"
     assert action.args.command_or_pid == "sleep"
     assert action.args.args == ["10"]
     assert action.args.working_directory == "/tmp"
@@ -142,23 +140,23 @@ def test_root_help_displays_subcommands():
     # Exit code 0 and key sub-commands in help output.
     assert proc.returncode == 0, proc.stderr
     assert "serve" in proc.stdout
-    assert "list-processes" in proc.stdout or "list_processes" in proc.stdout
+    assert "list-processes" in proc.stdout or "list" in proc.stdout
 
 
 def test_parse_cli_stop_process_by_pid(mock_setup_logging):
-    """Test `persistproc stop_process 123`."""
-    action, _ = parse_cli(["stop_process", "123"])
+    """Test `persistproc stop 123`."""
+    action, _ = parse_cli(["stop", "123"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "stop_process"
+    assert action.tool.name == "stop"
     assert action.args.command_or_pid == "123"
     assert not action.args.args
 
 
 def test_parse_cli_stop_process_by_command(mock_setup_logging):
-    """Test `persistproc stop_process sleep 10`."""
-    action, _ = parse_cli(["stop_process", "sleep", "10"])
+    """Test `persistproc stop sleep 10`."""
+    action, _ = parse_cli(["stop", "sleep", "10"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "stop_process"
+    assert action.tool.name == "stop"
     assert action.args.command_or_pid == "sleep"
     assert action.args.args == ["10"]
 

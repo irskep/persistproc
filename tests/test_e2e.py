@@ -1,15 +1,13 @@
-import pytest
 from tests.helpers import run_cli, extract_json, start_run, stop_run
 from pathlib import Path
 import time
-import os
 
 COUNTER_SCRIPT = Path(__file__).parent / "scripts" / "counter.py"
 
 
 def test_list_no_processes(server):
     """Test that the server runs and responds to a simple request."""
-    proc = run_cli("list-processes")
+    proc = run_cli("list")
     assert proc.returncode == 0
     assert extract_json(proc.stdout) == {"processes": []}
 
@@ -24,23 +22,23 @@ def test_start_list_stop(server):
 
     # 1. Start the counter script (runs indefinitely with --num-iterations 0).
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
-    start = run_cli("start-process", start_cmd)
+    start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
     # 2. Confirm it appears in the list and is running.
-    listed = run_cli("list-processes")
+    listed = run_cli("list")
     info = extract_json(listed.stdout)
     procs = info["processes"]
     match = next(p for p in procs if p["pid"] == pid)
     assert match["status"] == "running"
 
     # 3. Stop the process.
-    stop = run_cli("stop-process", str(pid))
+    stop = run_cli("stop", str(pid))
     extract_json(stop.stdout)  # ensure JSON present no error
 
     # 4. Verify it is no longer running (status != running).
-    after = run_cli("list-processes")
+    after = run_cli("list")
     info_after = extract_json(after.stdout)
     match_after = next(p for p in info_after["processes"] if p["pid"] == pid)
     assert match_after["status"] != "running"
@@ -50,19 +48,19 @@ def test_process_restart(server):
     """Start a process, restart it, verify PID changes and remains running."""
 
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
-    start = run_cli("start-process", start_cmd)
+    start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     old_pid = data["pid"]
 
     # Restart the process.
-    restart = run_cli("restart-process", str(old_pid))
+    restart = run_cli("restart", str(old_pid))
     restart_info = extract_json(restart.stdout)
     new_pid = restart_info["pid"]
 
     assert new_pid != old_pid
 
     # Confirm only new process is running.
-    listed = run_cli("list-processes")
+    listed = run_cli("list")
     info = extract_json(listed.stdout)
     procs = info["processes"]
 
@@ -75,14 +73,14 @@ def test_process_restart(server):
 def test_process_has_output(server):
     """Start a process, verify it has output, then stop it."""
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
-    start = run_cli("start-process", start_cmd)
+    start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
     time.sleep(1)
 
     # Get the output of the process.
-    output = run_cli("get-process-output", str(pid), "stdout", "--lines", "10")
+    output = run_cli("get-output", str(pid), "stdout", "--lines", "10")
     output_lines = extract_json(output.stdout)["output"]
     assert isinstance(output_lines, list)
     assert len(output_lines) > 0
@@ -92,7 +90,7 @@ def test_process_has_output(server):
     assert "3" in output_text
 
     # Stop the process.
-    stop = run_cli("stop-process", str(pid))
+    stop = run_cli("stop", str(pid))
     extract_json(stop.stdout)  # ensure JSON present no error
 
 
@@ -102,14 +100,14 @@ def test_process_has_output(server):
 
 
 def test_get_process_status(server):
-    """Test get_process_status tool."""
+    """Test get_status tool."""
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
-    start = run_cli("start-process", start_cmd)
+    start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
     # Get detailed status
-    status = run_cli("get-process-status", str(pid))
+    status = run_cli("get-status", str(pid))
     status_data = extract_json(status.stdout)
 
     assert status_data["pid"] == pid
@@ -119,18 +117,18 @@ def test_get_process_status(server):
     assert isinstance(status_data["command"], list)
 
     # Cleanup
-    run_cli("stop-process", str(pid))
+    run_cli("stop", str(pid))
 
 
 def test_get_process_log_paths(server):
-    """Test get_process_log_paths tool."""
+    """Test get_log_paths tool."""
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
-    start = run_cli("start-process", start_cmd)
+    start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
     # Get log paths
-    paths = run_cli("get-process-log-paths", str(pid))
+    paths = run_cli("get-log-paths", str(pid))
     paths_data = extract_json(paths.stdout)
 
     assert "stdout" in paths_data
@@ -139,18 +137,18 @@ def test_get_process_log_paths(server):
     assert isinstance(paths_data["stderr"], str)
 
     # Cleanup
-    run_cli("stop-process", str(pid))
+    run_cli("stop", str(pid))
 
 
 def test_start_process_with_working_directory(server):
-    """Test start_process with working_directory parameter."""
+    """Test start with working_directory parameter."""
     # Use a different directory (parent of current script location)
     work_dir = str(Path(__file__).parent.parent)
 
-    # CLI expects: start-process COMMAND [args...] --working-directory DIR
+    # CLI expects: start COMMAND [args...] --working-directory DIR
     # So we pass the command as separate arguments
     start = run_cli(
-        "start-process",
+        "start",
         "python",
         str(COUNTER_SCRIPT),
         "--num-iterations",
@@ -162,7 +160,7 @@ def test_start_process_with_working_directory(server):
     pid = data["pid"]
 
     # Verify the process started
-    status = run_cli("get-process-status", str(pid))
+    status = run_cli("get-status", str(pid))
     status_data = extract_json(status.stdout)
     assert status_data["pid"] == pid
     assert "working_directory" in status_data
@@ -172,10 +170,10 @@ def test_start_process_with_working_directory(server):
 
 
 def test_start_process_with_environment(server):
-    """Test start_process with environment parameter."""
-    # CLI expects: start-process COMMAND [args...] --environment KEY=VALUE
+    """Test start with environment parameter."""
+    # CLI expects: start COMMAND [args...] --environment KEY=VALUE
     start = run_cli(
-        "start-process",
+        "start",
         "python",
         str(COUNTER_SCRIPT),
         "--num-iterations",
@@ -187,7 +185,7 @@ def test_start_process_with_environment(server):
     pid = data["pid"]
 
     # Verify the process started
-    status = run_cli("get-process-status", str(pid))
+    status = run_cli("get-status", str(pid))
     status_data = extract_json(status.stdout)
     assert status_data["pid"] == pid
 
@@ -196,9 +194,9 @@ def test_start_process_with_environment(server):
 
 
 def test_stop_process_with_force(server):
-    """Test stop_process with force=True."""
+    """Test stop with force=True."""
     start = run_cli(
-        "start-process",
+        "start",
         "python",
         str(COUNTER_SCRIPT),
         "--num-iterations",
@@ -208,13 +206,13 @@ def test_stop_process_with_force(server):
     pid = data["pid"]
 
     # Stop with force flag - put --force before the PID
-    stop = run_cli("stop-process", "--force", str(pid))
+    stop = run_cli("stop", "--force", str(pid))
     stop_data = extract_json(stop.stdout)
     assert "exit_code" in stop_data or "error" not in stop_data
 
     # Verify it's no longer running
     time.sleep(1)
-    after = run_cli("list-processes")
+    after = run_cli("list")
     info_after = extract_json(after.stdout)
     match_after = next((p for p in info_after["processes"] if p["pid"] == pid), None)
     if match_after:
@@ -222,10 +220,10 @@ def test_stop_process_with_force(server):
 
 
 def test_get_process_output_stderr(server):
-    """Test get_process_output with stderr stream."""
+    """Test get_output with stderr stream."""
     # Use a script that writes to stderr
     start = run_cli(
-        "start-process",
+        "start",
         "python",
         "-c",
         "import sys; import time; [print('error', i, file=sys.stderr) or time.sleep(0.1) for i in range(20)]",
@@ -236,7 +234,7 @@ def test_get_process_output_stderr(server):
     time.sleep(1)
 
     # Get stderr output
-    output = run_cli("get-process-output", str(pid), "stderr", "--lines", "5")
+    output = run_cli("get-output", str(pid), "stderr", "--lines", "5")
     output_data = extract_json(output.stdout)
     output_lines = output_data["output"]
     assert isinstance(output_lines, list)
@@ -246,13 +244,13 @@ def test_get_process_output_stderr(server):
     assert "error" in stderr_text
 
     # Cleanup
-    run_cli("stop-process", str(pid))
+    run_cli("stop", str(pid))
 
 
 def test_get_process_output_with_lines_limit(server):
-    """Test get_process_output with lines parameter."""
+    """Test get_output with lines parameter."""
     start = run_cli(
-        "start-process",
+        "start",
         "python",
         str(COUNTER_SCRIPT),
         "--num-iterations",
@@ -264,20 +262,20 @@ def test_get_process_output_with_lines_limit(server):
     time.sleep(2)  # Let it generate some output
 
     # Get limited output
-    output = run_cli("get-process-output", str(pid), "stdout", "--lines", "3")
+    output = run_cli("get-output", str(pid), "stdout", "--lines", "3")
     output_data = extract_json(output.stdout)
     output_lines = output_data["output"]
     assert isinstance(output_lines, list)
     assert len(output_lines) <= 3
 
     # Cleanup
-    run_cli("stop-process", str(pid))
+    run_cli("stop", str(pid))
 
 
 def test_get_process_output_with_time_filters(server):
-    """Test get_process_output with before_time and since_time parameters."""
+    """Test get_output with before_time and since_time parameters."""
     start = run_cli(
-        "start-process",
+        "start",
         "python",
         str(COUNTER_SCRIPT),
         "--num-iterations",
@@ -297,7 +295,7 @@ def test_get_process_output_with_time_filters(server):
 
     # Get output since timestamp
     output = run_cli(
-        "get-process-output",
+        "get-output",
         str(pid),
         "stdout",
         "--lines",
@@ -311,7 +309,7 @@ def test_get_process_output_with_time_filters(server):
     # Get output before a future timestamp
     future_timestamp = datetime.datetime.now().isoformat()
     output = run_cli(
-        "get-process-output",
+        "get-output",
         str(pid),
         "stdout",
         "--lines",
@@ -323,7 +321,7 @@ def test_get_process_output_with_time_filters(server):
     assert isinstance(output_data["output"], list)
 
     # Cleanup
-    run_cli("stop-process", str(pid))
+    run_cli("stop", str(pid))
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +341,7 @@ def test_run_kills_process_on_exit(server):
     stop_run(run_proc)
 
     # After run exits, there should be no running processes.
-    listed = run_cli("list-processes")
+    listed = run_cli("list")
     info = extract_json(listed.stdout)
     # Process should exist but not be running
     assert len(info["processes"]) == 1
@@ -361,7 +359,7 @@ def test_run_detach_keeps_process_running(server):
     time.sleep(3)
 
     # 2. Find the PID of the process managed by `run`.
-    listed = run_cli("list-processes")
+    listed = run_cli("list")
     info = extract_json(listed.stdout)
     procs = info["processes"]
     assert len(procs) == 1, "Expected exactly one process to be running"
@@ -373,7 +371,7 @@ def test_run_detach_keeps_process_running(server):
     stop_run(run_proc)
 
     # 4. Verify the managed process is still running because of `detach`.
-    after = run_cli("list-processes")
+    after = run_cli("list")
     info_after = extract_json(after.stdout)
     proc_after = next((p for p in info_after["processes"] if p["pid"] == pid), None)
 
@@ -383,4 +381,4 @@ def test_run_detach_keeps_process_running(server):
     assert proc_after["status"] == "running"
 
     # 5. Cleanup.
-    run_cli("stop-process", str(pid))
+    run_cli("stop", str(pid))
