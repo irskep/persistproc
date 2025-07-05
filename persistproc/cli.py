@@ -43,6 +43,7 @@ class ToolAction:
 
     args: Namespace
     tool: Any
+    port: int
 
 
 CLIAction = ServeAction | RunAction | ToolAction
@@ -323,7 +324,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         if not hasattr(args, "port"):
             args.port = port_val
         tool = tools_by_name[args.command]
-        action = ToolAction(args=args, tool=tool)
+        action = ToolAction(args=args, tool=tool, port=port_val)
     else:
         parser.print_help()
         sys.exit(1)
@@ -351,7 +352,7 @@ def handle_cli_action(action: CLIAction, log_path: Path) -> None:
             label=action.label,
         )
     elif isinstance(action, ToolAction):
-        action.tool.call_with_args(action.args)
+        action.tool.call_with_args(action.args, action.port)
 
 
 def cli() -> None:

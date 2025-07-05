@@ -141,7 +141,7 @@ class ITool(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def call_with_args(self, args: Namespace) -> None:
+    def call_with_args(self, args: Namespace, port: int) -> None:
         """Execute the tool's CLI command."""
         ...
 
@@ -200,7 +200,7 @@ class StartProcessTool(ITool):
         parser.add_argument("command_", metavar="COMMAND", help="The command to run.")
         parser.add_argument("args", nargs="*", help="Arguments to the command")
 
-    def call_with_args(self, args: Namespace) -> None:
+    def call_with_args(self, args: Namespace, port: int) -> None:
         # Construct the command string from command and args
         if args.args:
             command = shlex.join([args.command_] + args.args)
@@ -213,7 +213,7 @@ class StartProcessTool(ITool):
             "environment": dict(os.environ),
             "label": getattr(args, "label", None),
         }
-        _make_mcp_request(self.name, args.port, payload)
+        _make_mcp_request(self.name, port, payload)
 
 
 class ListProcessesTool(ITool):
@@ -237,8 +237,8 @@ class ListProcessesTool(ITool):
     def build_subparser(self, parser: ArgumentParser) -> None:
         pass
 
-    def call_with_args(self, args: Namespace) -> None:
-        _make_mcp_request(self.name, args.port)
+    def call_with_args(self, args: Namespace, port: int) -> None:
+        _make_mcp_request(self.name, port)
 
 
 class GetProcessStatusTool(ITool):
@@ -291,7 +291,7 @@ class GetProcessStatusTool(ITool):
             help="The working directory for the process.",
         )
 
-    def call_with_args(self, args: Namespace) -> None:
+    def call_with_args(self, args: Namespace, port: int) -> None:
         pid, command_or_label = _parse_target_to_pid_or_command_or_label(
             args.target, args.args
         )
@@ -300,7 +300,7 @@ class GetProcessStatusTool(ITool):
             "command_or_label": command_or_label,
             "working_directory": args.working_directory,
         }
-        _make_mcp_request(self.name, args.port, payload)
+        _make_mcp_request(self.name, port, payload)
 
 
 class StopProcessTool(ITool):
@@ -364,7 +364,7 @@ class StopProcessTool(ITool):
             "--force", action="store_true", help="Force stop the process."
         )
 
-    def call_with_args(self, args: Namespace) -> None:
+    def call_with_args(self, args: Namespace, port: int) -> None:
         pid, command_or_label = _parse_target_to_pid_or_command_or_label(
             args.target, args.args
         )
@@ -432,7 +432,7 @@ class RestartProcessTool(ITool):
             help="The working directory for the process.",
         )
 
-    def call_with_args(self, args: Namespace) -> None:
+    def call_with_args(self, args: Namespace, port: int) -> None:
         pid, command_or_label = _parse_target_to_pid_or_command_or_label(
             args.target, args.args
         )
@@ -442,7 +442,7 @@ class RestartProcessTool(ITool):
             "command_or_label": command_or_label,
             "working_directory": args.working_directory,
         }
-        _make_mcp_request(self.name, args.port, payload)
+        _make_mcp_request(self.name, port, payload)
 
 
 class GetProcessOutputTool(ITool):
@@ -530,7 +530,7 @@ class GetProcessOutputTool(ITool):
             help="The working directory for the process.",
         )
 
-    def call_with_args(self, args: Namespace) -> None:
+    def call_with_args(self, args: Namespace, port: int) -> None:
         pid, command_or_label = _parse_target_to_pid_or_command_or_label(
             args.target, args.args
         )
@@ -544,7 +544,7 @@ class GetProcessOutputTool(ITool):
             "before_time": args.before_time,
             "since_time": args.since_time,
         }
-        _make_mcp_request(self.name, args.port, payload)
+        _make_mcp_request(self.name, port, payload)
 
 
 class GetProcessLogPathsTool(ITool):
@@ -597,7 +597,7 @@ class GetProcessLogPathsTool(ITool):
             help="The working directory for the process.",
         )
 
-    def call_with_args(self, args: Namespace) -> None:
+    def call_with_args(self, args: Namespace, port: int) -> None:
         pid, command_or_label = _parse_target_to_pid_or_command_or_label(
             args.target, args.args
         )
@@ -607,7 +607,7 @@ class GetProcessLogPathsTool(ITool):
             "command_or_label": command_or_label,
             "working_directory": args.working_directory,
         }
-        _make_mcp_request(self.name, args.port, payload)
+        _make_mcp_request(self.name, port, payload)
 
 
 class KillPersistprocTool(ITool):
@@ -633,8 +633,8 @@ class KillPersistprocTool(ITool):
     def build_subparser(self, parser: ArgumentParser) -> None:
         pass
 
-    def call_with_args(self, args: Namespace) -> None:
-        _make_mcp_request(self.name, args.port)
+    def call_with_args(self, args: Namespace, port: int) -> None:
+        _make_mcp_request(self.name, port)
 
 
 ALL_TOOL_CLASSES = [
