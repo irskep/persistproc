@@ -3,9 +3,11 @@ python = "3.12"
 uv = "latest"
 
 [tasks]
+"deps:sync" = "uv sync --extra docs --extra dev"
 "docs:prepare" = "scripts/prepare-docs.sh"
 "docs:build" = { depends = ["docs:prepare"], run = "mkdocs build --strict" }
 "docs:serve" = { depends = ["docs:prepare"], run = "mkdocs serve" }
 "docs:build-local" = { depends = ["docs:prepare"], run = "mkdocs build --strict -f mkdocs-local.yml" }
-"lint" = "uv run ruff check . --fix && uv run ruff format ."
-"lint:check" = "uv run ruff check . && uv run ruff format --check ." 
+lint = { run = "sh -c 'uv run ruff check . --fix && uv run ruff format .'", description = "Run linter with auto-fix and format code" }
+"lint:check" = { run = "uv run ruff check .", description = "Check linting without fixing" }
+"lint:format" = { run = "uv run ruff format .", description = "Format code" } 
