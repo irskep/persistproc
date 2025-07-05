@@ -34,8 +34,6 @@ class RunAction:
     on_exit: str
     raw: bool
     port: int
-    data_dir: Path
-    verbose: int
     label: str | None
 
 
@@ -317,8 +315,6 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
             on_exit=args.on_exit,
             raw=args.raw,
             port=port_val,
-            data_dir=data_dir_val,
-            verbose=verbose_val,
             label=getattr(args, "label", None),
         )
     elif args.command in tools_by_name:
@@ -348,7 +344,6 @@ def handle_cli_action(action: CLIAction, log_path: Path) -> None:
         run(
             action.command,
             action.run_args,
-            action.verbose,
             fresh=action.fresh,
             on_exit=action.on_exit,
             raw=action.raw,

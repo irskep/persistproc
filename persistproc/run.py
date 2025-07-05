@@ -303,7 +303,6 @@ def _find_restarted_process(
 def run(
     command: str,
     args: Sequence[str],
-    verbose: int = 0,
     *,
     fresh: bool = False,
     on_exit: str = "ask",  # ask|stop|detach
@@ -319,8 +318,6 @@ def run(
         Executable or program name to run.
     args
         Positional arguments passed to *command*.
-    verbose
-        Forwarded for parity with other sub-commands (currently unused).
     fresh
         If *True* and an instance of the target command is already running, stop
         it first before starting a new one.
