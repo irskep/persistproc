@@ -3,14 +3,14 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastmcp import FastMCP
 from rich import print, print_json
 
+from fastmcp import FastMCP
+
 from .console import console
-from .logging_utils import CLI_LOGGER
-from .tools import ALL_TOOL_CLASSES
+from .logging_utils import CLI_LOGGER, get_is_quiet
 from .process_manager import ProcessManager
-from .logging_utils import get_is_quiet
+from .tools import ALL_TOOL_CLASSES
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,7 @@ def _build_app(pm: ProcessManager) -> FastMCP:  # noqa: D401 – helper
     return app
 
 
-def serve(
-    port: int, verbose: int, data_dir: Path, log_path: Path
-) -> None:  # noqa: D401
+def serve(port: int, verbose: int, data_dir: Path, log_path: Path) -> None:  # noqa: D401
     """Start the *persistproc* MCP server.
 
     By default this function logs the intended bind address and *returns* so

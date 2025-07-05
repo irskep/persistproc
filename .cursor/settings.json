@@ -8,5 +8,23 @@
   "editor.formatOnSaveOptions": {
     "tabSize": 4,
     "insertSpaces": true
+  },
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit",
+      "source.fixAll": "explicit"
+    }
+  },
+  "ruff.enable": true,
+  "ruff.lint.enable": true,
+  "ruff.format.enable": true,
+  "ruff.organizeImports": true,
+  "ruff.fixAll": true,
+  "ruff.codeAction.fixViolation": {
+    "enable": true
+  },
+  "ruff.codeAction.disableRuleComment": {
+    "enable": true
   }
 }

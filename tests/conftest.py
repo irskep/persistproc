@@ -1,13 +1,13 @@
 import logging
-import sys
-from pathlib import Path
-from typing import Iterable
+import os
+import random
 import signal
 import socket
-import random
-import os
-from datetime import datetime
+import sys
 import uuid
+from collections.abc import Iterable
+from datetime import datetime
+from pathlib import Path
 
 import pytest
 

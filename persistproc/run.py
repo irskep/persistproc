@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import os
-import sys
-import time
-import threading
-import logging
-from pathlib import Path
-from typing import Sequence, Optional
 import asyncio
 import json
+import logging
+import os
 import re
 import signal
+import sys
+import threading
+import time
+from collections.abc import Sequence
+from pathlib import Path
 
 try:
     import termios
@@ -69,7 +69,7 @@ def _get_single_char() -> str | None:  # noqa: D401 – helper
 
 def _find_running_process_dict(
     processes: list[dict], cmd_tokens: list[str], working_directory: str
-) -> Optional[dict]:  # noqa: D401 – helper
+) -> dict | None:  # noqa: D401 – helper
     """Return the first *running* process dict matching *cmd_tokens*."""
 
     for info in processes:

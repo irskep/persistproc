@@ -34,7 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black", 
+    "ruff",
     "pytest>=7.0", 
     "pytest-asyncio>=0.21", 
     "pytest-cov>=4.0",
@@ -59,4 +59,30 @@ Homepage = "https://github.com/irskep/persistproc-mcp"
 "Bug Tracker" = "https://github.com/irskep/persistproc-mcp/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["persistproc"] 
+packages = ["persistproc"]
+
+[tool.ruff]
+# Use Ruff's recommended defaults with minimal overrides
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+# Use Ruff's recommended rule set
+extend-select = [
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+]
+
+# Only ignore rules that are problematic for this specific project
+ignore = [
+    "S101",   # Use of assert (fine in tests and debug code)
+    "I001",   # Import block is un-sorted (ruff format handles this)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",   # Use of assert is fine in tests
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["persistproc"] 
