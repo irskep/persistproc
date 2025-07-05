@@ -173,10 +173,6 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         parents=[common_parser],
     )
     p_run.add_argument(
-        "program",
-        help="The program to run (e.g. 'python' or 'ls'). If the string contains spaces, it will be shell-split unless additional arguments are provided separately.",
-    )
-    p_run.add_argument(
         "--fresh",
         action="store_true",
         help="Stop an existing running instance of the same command before starting a new one.",
@@ -198,8 +194,10 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         help="Custom label for the process (default: '<command> in <working_directory>').",
     )
     p_run.add_argument(
-        "args", nargs=argparse.REMAINDER, help="Arguments to the program"
+        "program",
+        help="The program to run (e.g. 'python' or 'ls'). If the string contains spaces, it will be shell-split unless additional arguments are provided separately.",
     )
+    p_run.add_argument("args", nargs="*", help="Arguments to the program")
 
     # ------------------------------------------------------------------
     # Tool sub-commands – accept *both* snake_case and kebab-case variants
