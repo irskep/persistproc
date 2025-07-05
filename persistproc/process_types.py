@@ -61,22 +61,27 @@ class ListProcessesResult:
 
 @dataclass
 class ProcessStatusResult:
-    pid: int
-    command: list[str]
-    working_directory: str
-    status: str
-    label: str
+    pid: int | None = None
+    command: list[str] | None = None
+    working_directory: str | None = None
+    status: str | None = None
+    label: str | None = None
+    error: str | None = None
 
 
 @dataclass
 class ProcessOutputResult:
-    output: list[str]
+    output: list[str] | None = None
+    lines_before: int | None = None
+    lines_after: int | None = None
+    error: str | None = None
 
 
 @dataclass
 class ProcessLogPathsResult:
-    stdout: str
-    stderr: str
+    stdout: str | None = None
+    stderr: str | None = None
+    error: str | None = None
 
 
 @dataclass
