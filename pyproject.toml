@@ -41,6 +41,15 @@ dev = [
     "pre-commit>=3.0.0",
     "uvicorn>=0.35.0",
 ]
+docs = [
+    "mkdocs>=1.5.3",
+    "mkdocs-material>=9.4.6",
+    "mkdocstrings[python]>=0.23.0",
+    "pymdown-extensions>=10.3.1",
+    "mkdocs-mermaid2-plugin>=1.1.1",
+    "mkdocs-github-admonitions-plugin",
+    "coverage-badge",
+]
 
 [project.scripts]
 persistproc = "persistproc.__main__:main"
