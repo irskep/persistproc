@@ -36,15 +36,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Python and uv
+        uses: astral-sh/setup-uv@v4
         with:
           python-version: '3.11'
-          cache: 'pip'
           
-      - name: Install dependencies
+      - name: Install dependencies and run tests with coverage
         run: |
-          pip install -r requirements-docs.txt
+          uv sync --extra docs --extra dev
+          uv run pytest --cov=persistproc --cov-report=json
+          uv run coverage-badge -o coverage.svg
+          cp coverage.svg docs/
           
       - name: Prepare documentation
         run: |
@@ -54,9 +56,9 @@ jobs:
       - name: Build documentation
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            mkdocs build --strict -f mkdocs-local.yml
+            uv run mkdocs build --strict -f mkdocs-local.yml
           else
-            mkdocs build --strict
+            uv run mkdocs build --strict
           fi
           
       - name: Upload Pages artifact (for main branch)
