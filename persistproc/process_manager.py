@@ -88,6 +88,10 @@ class ProcessManager:  # noqa: D101
         self.data_dir = data_dir
         self._server_log_path = server_log_path
 
+        registry = registry or Registry(
+            storage=lambda: ProcessStorageManager(), log=lambda path: LogManager(path)
+        )
+
         self._storage = registry.storage()
         self._log_mgr = registry.log(data_dir / "process_logs")
 

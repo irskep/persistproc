@@ -82,7 +82,9 @@ def test_process_has_output(server):
     time.sleep(1)
 
     # Get the output of the process.
-    output = run_cli("get-output", str(pid), "stdout", "--lines", "10")
+    output = run_cli(
+        "get-output", "--stream", "stdout", "--lines", "10", "--", str(pid)
+    )
     output_lines = extract_json(output.stdout)["output"]
     assert isinstance(output_lines, list)
     assert len(output_lines) > 0
@@ -212,7 +214,7 @@ def test_get_process_output_stderr(server):
     time.sleep(1)
 
     # Get stderr output
-    output = run_cli("get-output", str(pid), "stderr", "--lines", "5")
+    output = run_cli("get-output", "--stream", "stderr", "--lines", "5", "--", str(pid))
     output_data = extract_json(output.stdout)
     output_lines = output_data["output"]
     assert isinstance(output_lines, list)
@@ -235,7 +237,7 @@ def test_get_process_output_with_lines_limit(server):
     time.sleep(2)  # Let it generate some output
 
     # Get limited output
-    output = run_cli("get-output", str(pid), "stdout", "--lines", "3")
+    output = run_cli("get-output", "--stream", "stdout", "--lines", "3", "--", str(pid))
     output_data = extract_json(output.stdout)
     output_lines = output_data["output"]
     assert isinstance(output_lines, list)
@@ -264,12 +266,14 @@ def test_get_process_output_with_time_filters(server):
     # Get output since timestamp
     output = run_cli(
         "get-output",
-        str(pid),
+        "--stream",
         "stdout",
         "--lines",
         "10",
         "--since-time",
         timestamp,
+        "--",
+        str(pid),
     )
     output_data = extract_json(output.stdout)
     assert isinstance(output_data["output"], list)
@@ -278,12 +282,14 @@ def test_get_process_output_with_time_filters(server):
     future_timestamp = datetime.datetime.now().isoformat()
     output = run_cli(
         "get-output",
-        str(pid),
+        "--stream",
         "stdout",
         "--lines",
         "10",
         "--before-time",
         future_timestamp,
+        "--",
+        str(pid),
     )
     output_data = extract_json(output.stdout)
     assert isinstance(output_data["output"], list)
