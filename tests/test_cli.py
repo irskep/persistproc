@@ -445,13 +445,10 @@ def test_parse_cli_run_help_flag_ambiguity(mock_setup_logging):
 
 
 def test_parse_cli_run_verbose_flag_position(mock_setup_logging):
-    """Test mistake: `persistproc run python -v script.py` without --."""
-    # -v is consumed by persistproc, increasing verbosity
-    action, _ = parse_cli(["run", "python", "-v", "script.py"])
-    assert isinstance(action, RunAction)
-    assert action.command == "python"
-    assert action.run_args == ["script.py"]  # -v was consumed by persistproc
-    assert action.verbose == 1  # -v increased verbosity
+    """Test mistake: `persistproc run python -m script.py` without --."""
+    # -m should cause an error since it's not a recognized persistproc flag
+    with pytest.raises(SystemExit):
+        parse_cli(["run", "python", "-m", "script.py"])
 
 
 # Test cases showing the DESIRED behavior (now implemented!)
