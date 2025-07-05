@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from persistproc.process_storage_manager import _ProcEntry
+from persistproc.process_manager import Registry
 
 
 class FakeProcessStorageManager:
@@ -148,12 +149,9 @@ class FakeSubprocessPopen:
 
 def create_fake_registry(base_dir: Path) -> Any:
     """Create a fake registry for testing ProcessManager."""
-    from persistproc.process_manager import Registry
-
     storage = FakeProcessStorageManager()
-    log_mgr = FakeLogManager(base_dir)
 
-    return Registry(storage=lambda: storage, log=lambda path: log_mgr)
+    return Registry(storage=lambda: storage, log=lambda path: FakeLogManager(path))
 
 
 def create_fake_proc_entry(
@@ -163,10 +161,14 @@ def create_fake_proc_entry(
     status: str = "running",
     label: str = "test-process",
     proc: Any = None,
+    log_prefix: str | None = None,
 ) -> _ProcEntry:
     """Create a fake process entry for testing."""
     if command is None:
         command = ["echo", "hello"]
+
+    if log_prefix is None:
+        log_prefix = f"{pid}.echo"
 
     return _ProcEntry(
         pid=pid,
@@ -175,7 +177,7 @@ def create_fake_proc_entry(
         environment={},
         start_time="2024-01-01T00:00:00.000Z",
         status=status,
-        log_prefix=f"{pid}.echo",
+        log_prefix=log_prefix,
         label=label,
         proc=proc,
     )

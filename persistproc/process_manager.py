@@ -86,6 +86,7 @@ class ProcessManager:  # noqa: D101
         server_log_path: Path | None = None,
     ) -> None:  # noqa: D401 – simple init
         self.data_dir = data_dir
+        self._server_log_path = server_log_path
 
         self._storage = registry.storage()
         self._log_mgr = registry.log(data_dir / "process_logs")
@@ -139,12 +140,14 @@ class ProcessManager:  # noqa: D101
         for ent in process_snapshot:
             # Check for duplicate labels in running processes
             if ent.label == process_label and ent.status == "running":
-                raise ValueError(
-                    f"Process with label '{process_label}' already running with PID {ent.pid}."
+                return StartProcessResult(
+                    error=f"Process with label '{process_label}' already running with PID {ent.pid}."
                 )
 
         if not working_directory.is_dir():
-            raise ValueError(f"Working directory '{working_directory}' does not exist.")
+            return StartProcessResult(
+                error=f"Working directory '{working_directory}' does not exist."
+            )
 
         diagnostic_info_for_errors = {
             "command": command,
@@ -341,13 +344,12 @@ class ProcessManager:  # noqa: D101
         )
 
         # Use _lookup_process to find the process
-        logger.debug("restart: acquiring lock to find process")
-        with self._lock:
-            logger.debug("restart: lock acquired to find process")
-            pid_to_restart, error = self._lookup_process(
-                pid, label, command_or_label, working_directory
-            )
-        logger.debug("restart: lock released after finding process")
+        logger.debug("restart: finding process")
+        process_snapshot = self._storage.get_processes_values_snapshot()
+        pid_to_restart, error = self._lookup_process_in_snapshot(
+            process_snapshot, pid, label, command_or_label, working_directory
+        )
+        logger.debug("restart: finished finding process")
 
         if error:
             return RestartProcessResult(error=error)
@@ -355,17 +357,14 @@ class ProcessManager:  # noqa: D101
         if pid_to_restart is None:
             return RestartProcessResult(error="Process not found to restart.")
 
-        logger.debug("restart: acquiring lock for pid=%d", pid_to_restart)
-        with self._lock:
-            logger.debug("restart: lock acquired for pid=%d", pid_to_restart)
-            try:
-                original_entry = self._get_process_info_within_lock(pid_to_restart)
-            except ValueError:
-                logger.debug("restart: lock released for pid=%d", pid_to_restart)
-                return RestartProcessResult(
-                    error=f"Process with PID {pid_to_restart} not found."
-                )
-        logger.debug("restart: lock released for pid=%d", pid_to_restart)
+        logger.debug("restart: getting process info for pid=%d", pid_to_restart)
+        original_entry = self._storage.get_process_snapshot(pid_to_restart)
+        if original_entry is None:
+            logger.debug("restart: process not found for pid=%d", pid_to_restart)
+            return RestartProcessResult(
+                error=f"Process with PID {pid_to_restart} not found."
+            )
+        logger.debug("restart: got process info for pid=%d", pid_to_restart)
 
         # Retain original parameters for restart
         original_command_list = original_entry.command
@@ -424,13 +423,12 @@ class ProcessManager:  # noqa: D101
         command_or_label: str | None = None,
         working_directory: Path | None = None,
     ) -> ProcessOutputResult:  # noqa: D401
-        logger.debug("get_output: acquiring lock")
-        with self._lock:
-            logger.debug("get_output: lock acquired")
-            target_pid, error = self._lookup_process(
-                pid, None, command_or_label, working_directory
-            )
-        logger.debug("get_output: lock released")
+        logger.debug("get_output: finding process")
+        process_snapshot = self._storage.get_processes_values_snapshot()
+        target_pid, error = self._lookup_process_in_snapshot(
+            process_snapshot, pid, None, command_or_label, working_directory
+        )
+        logger.debug("get_output: finished finding process")
 
         if error:
             return ProcessOutputResult(error=error)
@@ -438,15 +436,12 @@ class ProcessManager:  # noqa: D101
         if target_pid is None:
             return ProcessOutputResult(error="Process not found")
 
-        logger.debug("get_output: acquiring lock for pid=%d", target_pid)
-        with self._lock:
-            logger.debug("get_output: lock acquired for pid=%d", target_pid)
-            try:
-                ent = self._get_process_info_within_lock(target_pid)
-            except ValueError as e:
-                logger.debug("get_output: lock released for pid=%d", target_pid)
-                return ProcessOutputResult(error=str(e))
-        logger.debug("get_output: lock released for pid=%d", target_pid)
+        logger.debug("get_output: getting process info for pid=%d", target_pid)
+        ent = self._storage.get_process_snapshot(target_pid)
+        if ent is None:
+            logger.debug("get_output: process not found for pid=%d", target_pid)
+            return ProcessOutputResult(error=f"PID {target_pid} not found")
+        logger.debug("get_output: got process info for pid=%d", target_pid)
 
         if self._log_mgr is None:
             raise RuntimeError("Log manager not available")
@@ -466,8 +461,6 @@ class ProcessManager:  # noqa: D101
         if not path.exists():
             return ProcessOutputResult(output=[])
 
-        filtered_lines: list[str] = []
-
         with path.open("r", encoding="utf-8") as fh:
             all_lines = fh.readlines()
 
@@ -477,43 +470,66 @@ class ProcessManager:  # noqa: D101
                 ts = ts[:-1] + "+00:00"
             return datetime.fromisoformat(ts)
 
-        if since_time:
-            since_dt = _parse_iso(since_time)
-            filtered_lines = [
-                ln for ln in all_lines if _parse_iso(ln.split(" ", 1)[0]) >= since_dt
-            ]
-        if before_time:
-            before_dt = _parse_iso(before_time)
-            all_lines = [
-                ln for ln in all_lines if _parse_iso(ln.split(" ", 1)[0]) < before_dt
-            ]
+        # Start with all lines, then apply filters
+        filtered_lines = all_lines
+
+        try:
+            if since_time:
+                since_dt = _parse_iso(since_time)
+                filtered_lines = [
+                    ln
+                    for ln in filtered_lines
+                    if _parse_iso(ln.split(" ", 1)[0]) >= since_dt
+                ]
+            if before_time:
+                before_dt = _parse_iso(before_time)
+                filtered_lines = [
+                    ln
+                    for ln in filtered_lines
+                    if _parse_iso(ln.split(" ", 1)[0]) < before_dt
+                ]
+        except (ValueError, IndexError) as e:
+            # If timestamp parsing fails, fall back to returning all lines
+            logger.warning(
+                "Failed to parse timestamps in log filtering: %s, returning all lines",
+                e,
+            )
+            filtered_lines = all_lines
 
         if lines is not None:
-            filtered_lines = all_lines[-lines:]
+            filtered_lines = filtered_lines[-lines:]
 
         if filtered_lines:
-            first_line_ts = _parse_iso(filtered_lines[0].split(" ", 1)[0])
-            last_line_ts = _parse_iso(filtered_lines[-1].split(" ", 1)[0])
-            lines_after = len(
-                [
-                    ln
-                    for ln in all_lines
-                    if _parse_iso(ln.split(" ", 1)[0]) >= first_line_ts
-                ]
-            )
-            lines_before = len(
-                [
-                    ln
-                    for ln in all_lines
-                    if _parse_iso(ln.split(" ", 1)[0]) <= last_line_ts
-                ]
-            )
+            try:
+                first_line_ts = _parse_iso(filtered_lines[0].split(" ", 1)[0])
+                last_line_ts = _parse_iso(filtered_lines[-1].split(" ", 1)[0])
 
-            return ProcessOutputResult(
-                output=filtered_lines,
-                lines_before=lines_before,
-                lines_after=lines_after,
-            )
+                lines_after = 0
+                lines_before = 0
+
+                for ln in all_lines:
+                    try:
+                        line_ts = _parse_iso(ln.split(" ", 1)[0])
+                        if line_ts >= first_line_ts:
+                            lines_after += 1
+                        if line_ts <= last_line_ts:
+                            lines_before += 1
+                    except (ValueError, IndexError):
+                        # Skip lines that can't be parsed
+                        continue
+
+                return ProcessOutputResult(
+                    output=filtered_lines,
+                    lines_before=lines_before,
+                    lines_after=lines_after,
+                )
+            except (ValueError, IndexError):
+                # If we can't parse timestamps, just return the filtered lines
+                return ProcessOutputResult(
+                    output=filtered_lines,
+                    lines_before=0,
+                    lines_after=0,
+                )
         else:
             return ProcessOutputResult(output=[], lines_before=0, lines_after=0)
 
@@ -523,13 +539,12 @@ class ProcessManager:  # noqa: D101
         command_or_label: str | None = None,
         working_directory: Path | None = None,
     ) -> ProcessLogPathsResult:  # noqa: D401
-        logger.debug("get_log_paths: acquiring lock")
-        with self._lock:
-            logger.debug("get_log_paths: lock acquired")
-            target_pid, error = self._lookup_process(
-                pid, None, command_or_label, working_directory
-            )
-        logger.debug("get_log_paths: lock released")
+        logger.debug("get_log_paths: finding process")
+        process_snapshot = self._storage.get_processes_values_snapshot()
+        target_pid, error = self._lookup_process_in_snapshot(
+            process_snapshot, pid, None, command_or_label, working_directory
+        )
+        logger.debug("get_log_paths: finished finding process")
 
         if error:
             return ProcessLogPathsResult(error=error)
@@ -537,15 +552,12 @@ class ProcessManager:  # noqa: D101
         if target_pid is None:
             return ProcessLogPathsResult(error="Process not found")
 
-        logger.debug("get_log_paths: acquiring lock for pid=%d", target_pid)
-        with self._lock:
-            logger.debug("get_log_paths: lock acquired for pid=%d", target_pid)
-            try:
-                ent = self._get_process_info_within_lock(target_pid)
-                logger.debug("get_log_paths: lock released for pid=%d", target_pid)
-            except ValueError as e:
-                logger.debug("get_log_paths: lock released for pid=%d", target_pid)
-                return ProcessLogPathsResult(error=str(e))
+        logger.debug("get_log_paths: getting process info for pid=%d", target_pid)
+        ent = self._storage.get_process_snapshot(target_pid)
+        if ent is None:
+            logger.debug("get_log_paths: process not found for pid=%d", target_pid)
+            return ProcessLogPathsResult(error=f"PID {target_pid} not found")
+        logger.debug("get_log_paths: got process info for pid=%d", target_pid)
 
         if self._log_mgr is None:
             raise RuntimeError("Log manager not available")
@@ -559,8 +571,7 @@ class ProcessManager:  # noqa: D101
         logger.info("event=kill_persistproc_start server_pid=%s", server_pid)
 
         # Get a snapshot of all processes to kill
-        with self._lock:
-            processes_to_kill = list(self._processes.values())
+        processes_to_kill = self._storage.get_processes_values_snapshot()
 
         if not processes_to_kill:
             logger.debug("event=kill_persistproc_no_processes")
@@ -658,11 +669,6 @@ class ProcessManager:  # noqa: D101
         else:
             return None, f"No process found for '{command_or_label}'"
 
-    def _get_process_info_within_lock(self, pid: int) -> _ProcEntry:  # noqa: D401 – helper (assumes lock held)
-        if pid not in self._processes:
-            raise ValueError(f"PID {pid} not found")
-        return self._processes[pid]
-
     def _to_public_info(self, ent: _ProcEntry) -> ProcessInfo:  # noqa: D401 – helper
         return ProcessInfo(
             pid=ent.pid,
@@ -681,32 +687,29 @@ class ProcessManager:  # noqa: D101
         """
         logger.debug("Monitor thread starting")
 
-        while not self._stop_evt.is_set():
-            logger.debug("event=monitor_tick_start num_procs=%d", len(self._processes))
+        while not self._storage.stop_event_is_set():
+            procs_to_check = self._storage.get_processes_values_snapshot()
+            logger.debug("event=monitor_tick_start num_procs=%d", len(procs_to_check))
 
-            logger.debug("monitor_loop: acquiring lock")
-            with self._lock:
-                logger.debug("monitor_loop: lock acquired")
-                procs_to_check = list(self._processes.values())
+            for ent in procs_to_check:
+                if ent.status != "running" or ent.proc is None:
+                    continue  # Skip non-running processes
 
-                for ent in procs_to_check:
-                    if ent.status != "running" or ent.proc is None:
-                        continue  # Skip non-running processes
+                if ent.proc.poll() is not None:
+                    # Process has exited - update via storage manager
+                    self._storage.update_process_in_place(
+                        ent.pid,
+                        status="exited",
+                        exit_code=ent.proc.returncode,
+                        exit_time=_get_iso_ts(),
+                    )
+                    logger.info(
+                        "Process %s exited with code %s", ent.pid, ent.proc.returncode
+                    )
 
-                    if ent.proc.poll() is not None:
-                        # Process has exited.
-                        ent.status = "exited"
-                        ent.exit_code = ent.proc.returncode
-                        ent.exit_time = _get_iso_ts()
-                        logger.info(
-                            "Process %s exited with code %s", ent.pid, ent.exit_code
-                        )
-                logger.debug(
-                    "monitor_loop: lock released, checked %d procs",
-                    len(procs_to_check),
-                )
-
-            logger.debug("event=monitor_tick_end")
+            logger.debug(
+                "event=monitor_tick_end, checked %d procs", len(procs_to_check)
+            )
             time.sleep(_POLL_INTERVAL)
 
         logger.debug("Monitor thread exiting")
