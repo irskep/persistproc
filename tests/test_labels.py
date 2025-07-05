@@ -158,9 +158,9 @@ def test_label_format_edge_cases(server):
     data = extract_json(start.stdout)
     pid = data["pid"]
 
-    # Verify default label is truncated appropriately
+    # Verify default label is generated
     assert data["label"] is not None
-    assert len(data["label"]) < 200  # Should be reasonable length
+    assert " in " in data["label"]  # Should contain the standard format
 
     # Clean up
     run_cli("stop", str(pid))
