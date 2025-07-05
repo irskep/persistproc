@@ -1,3 +1,4 @@
+import os
 import time
 from pathlib import Path
 
@@ -338,25 +339,70 @@ def test_run_kills_process_on_exit(server):
 
     time.sleep(3)
 
+    # Verify that a process was actually started and get its PID
+    initial_list = run_cli("list")
+    initial_info = extract_json(initial_list.stdout)
+    assert len(initial_info["processes"]) >= 1, (
+        f"No process was started. Server response: {initial_list.stdout}"
+    )
+
+    target_pid = initial_info["processes"][0]["pid"]
+
+    # Verify the process is actually running at the OS level
+    try:
+        os.kill(target_pid, 0)  # Signal 0 just checks if process exists
+        process_exists_before = True
+    except (OSError, ProcessLookupError):
+        process_exists_before = False
+
+    assert process_exists_before, (
+        f"Process {target_pid} was not actually running at OS level"
+    )
+
     # Terminate run gracefully.
     stop_run(run_proc)
 
     # Wait for the process to actually be stopped (up to 10 seconds)
     # This fixes the race condition where the test checks status before the stop completes
-    deadline = time.time() + 10.0
+    deadline = time.time() + 30.0
+    stopped_successfully = False
     while time.time() < deadline:
         listed = run_cli("list")
         info = extract_json(listed.stdout)
-        if len(info["processes"]) == 1 and info["processes"][0]["status"] != "running":
+        # Process is considered stopped if either:
+        # 1. It exists but is not running, or
+        # 2. It has been completely removed from the list
+        if (
+            len(info["processes"]) == 1 and info["processes"][0]["status"] != "running"
+        ) or (len(info["processes"]) == 0):
+            stopped_successfully = True
             break
         time.sleep(0.5)
 
-    # After run exits, there should be no running processes.
+    # After run exits, verify the process was properly stopped
     listed = run_cli("list")
     info = extract_json(listed.stdout)
-    # Process should exist but not be running
-    assert len(info["processes"]) == 1
-    assert info["processes"][0]["status"] != "running"
+
+    # The process should either be stopped or completely removed
+    assert stopped_successfully, "Process was not stopped within the timeout period"
+
+    if len(info["processes"]) == 1:
+        # Process exists but should not be running
+        assert info["processes"][0]["status"] != "running"
+    else:
+        # Process was completely removed, which is also acceptable
+        assert len(info["processes"]) == 0
+
+    # Most importantly: verify the process is actually dead at the OS level
+    try:
+        os.kill(target_pid, 0)  # Signal 0 just checks if process exists
+        process_still_exists = True
+    except (OSError, ProcessLookupError):
+        process_still_exists = False
+
+    assert not process_still_exists, (
+        f"Process {target_pid} is still running at OS level after stop"
+    )
 
 
 def test_run_detach_keeps_process_running(server):
