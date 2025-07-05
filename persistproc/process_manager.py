@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-# Comprehensive ProcessManager implementation.
-# Standard library imports
 import logging
 import os
 import shlex
@@ -10,10 +8,16 @@ import subprocess
 import threading
 import time
 import traceback
-from dataclasses import dataclass, field
+from collections.abc import Callable
+
+# Comprehensive ProcessManager implementation.
+# Standard library imports
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from persistproc.log_manager import LogManager
+from persistproc.process_storage_manager import ProcessStorageManager, _ProcEntry
 from persistproc.process_types import (
     ListProcessesResult,
     ProcessInfo,
@@ -64,112 +68,33 @@ _POLL_INTERVAL = float(os.environ.get("PERSISTPROC_TEST_POLL_INTERVAL", "1.0"))
 
 
 @dataclass
-class _ProcEntry:  # noqa: D401 – internal state
-    pid: int
-    command: list[str]
-    working_directory: str
-    environment: dict[str, str] | None
-    start_time: str
-    status: str  # running | exited | terminated | failed
-    log_prefix: str
-    label: str
-    exit_code: int | None = None
-    exit_time: str | None = None
-    # Keep a reference so we can signal/poll. Excluded from comparisons.
-    proc: subprocess.Popen | None = field(repr=False, compare=False, default=None)
+class Registry:
+    """
+    Contains factory functions for dependencies, so swapping in fakes in tests is easy
+    """
 
-
-class _LogManager:
-    """Handle per-process log files & pump threads."""
-
-    @dataclass(slots=True)
-    class _LogPaths:  # noqa: D401 – lightweight value object
-        stdout: Path
-        stderr: Path
-        combined: Path
-
-        # Make the instance behave *partly* like a mapping for legacy uses.
-        def __getitem__(self, item: str) -> Path:  # noqa: D401 – mapping convenience
-            return getattr(self, item)
-
-        def __contains__(self, item: str) -> bool:  # noqa: D401 – mapping convenience
-            return hasattr(self, item)
-
-    def __init__(self, base_dir: Path):
-        self._dir = base_dir
-        self._dir.mkdir(parents=True, exist_ok=True)
-
-    # -------------------------------
-    # Public helpers
-    # -------------------------------
-
-    def paths_for(self, prefix: str) -> _LogPaths:  # noqa: D401
-        return self._LogPaths(
-            stdout=self._dir / f"{prefix}.stdout",
-            stderr=self._dir / f"{prefix}.stderr",
-            combined=self._dir / f"{prefix}.combined",
-        )
-
-    def start_pumps(self, proc: subprocess.Popen, prefix: str) -> None:  # noqa: D401
-        paths = self.paths_for(prefix)
-
-        # open in text mode – we add timestamps manually
-        stdout_fh = paths.stdout.open("a", encoding="utf-8")
-        stderr_fh = paths.stderr.open("a", encoding="utf-8")
-        comb_fh = paths.combined.open("a", encoding="utf-8")
-
-        def _pump(src: subprocess.PIPE, primary, secondary) -> None:  # type: ignore[type-arg]
-            # Blocking read; releases GIL.
-            for b_line in iter(src.readline, b""):
-                line = b_line.decode("utf-8", errors="replace")
-                ts_line = f"{_get_iso_ts()} {line}"
-                primary.write(ts_line)
-                primary.flush()
-                secondary.write(ts_line)
-                secondary.flush()
-            src.close()
-            primary.close()
-
-        threading.Thread(
-            target=_pump, args=(proc.stdout, stdout_fh, comb_fh), daemon=True
-        ).start()
-        threading.Thread(
-            target=_pump, args=(proc.stderr, stderr_fh, comb_fh), daemon=True
-        ).start()
-
-        def _close_combined() -> None:
-            proc.wait()
-            comb_fh.close()
-
-        threading.Thread(target=_close_combined, daemon=True).start()
+    storage: Callable[[], ProcessStorageManager]
+    log: Callable[[str], LogManager]
 
 
 class ProcessManager:  # noqa: D101
-    def __init__(self) -> None:  # noqa: D401 – simple init
-        self.data_dir: Path | None = None
-        self._log_dir: Path | None = None
-        self._server_log_path: Path | None = None
+    def __init__(
+        self,
+        monitor=True,
+        registry: Registry | None = None,
+        data_dir: Path | None = None,
+        server_log_path: Path | None = None,
+    ) -> None:  # noqa: D401 – simple init
+        self.data_dir = data_dir
 
-        self._processes: dict[int, _ProcEntry] = {}
-        self._lock = threading.Lock()
-        self._stop_evt = threading.Event()
+        self._storage = registry.storage()
+        self._log_mgr = registry.log(data_dir / "process_logs")
 
         # monitor thread is started on first *bootstrap*
+        self.monitor = monitor
         self._monitor_thread: threading.Thread | None = None
-        self._log_mgr: _LogManager | None = None
 
-    # ------------------------------------------------------------------
-    # Lifecycle helpers
-    # ------------------------------------------------------------------
-
-    def bootstrap(self, data_dir: Path, server_log_path: Path | None = None) -> None:  # noqa: D401
-        """Must be called exactly once after CLI parsed *--data-dir*."""
-        self.data_dir = data_dir
-        self._log_dir = data_dir / "process_logs"
-        self._server_log_path = server_log_path
-        self._log_mgr = _LogManager(self._log_dir)
-
-        if self._monitor_thread is None:
+        if self._monitor_thread is None and self.monitor:
             self._monitor_thread = threading.Thread(
                 target=self._monitor_loop, daemon=True
             )
@@ -177,9 +102,13 @@ class ProcessManager:  # noqa: D101
 
         logger.debug("ProcessManager bootstrapped dir=%s", data_dir)
 
+    # ------------------------------------------------------------------
+    # Lifecycle helpers
+    # ------------------------------------------------------------------
+
     def shutdown(self) -> None:  # noqa: D401
         """Signal the monitor thread to exit (used by tests)."""
-        self._stop_evt.set()
+        self._storage.stop_event_set()
         if self._monitor_thread:
             self._monitor_thread.join(timeout=2)
 
@@ -206,16 +135,13 @@ class ProcessManager:  # noqa: D101
         process_label = get_label(label, command, str(working_directory))
 
         # Prevent duplicate *running* labels (helps humans)
-        logger.debug("start: acquiring lock")
-        with self._lock:
-            logger.debug("start: lock acquired")
-            for ent in self._processes.values():
-                # Check for duplicate labels in running processes
-                if ent.label == process_label and ent.status == "running":
-                    raise ValueError(
-                        f"Process with label '{process_label}' already running with PID {ent.pid}."
-                    )
-        logger.debug("start: lock released")
+        process_snapshot = self._storage.get_processes_values_snapshot()
+        for ent in process_snapshot:
+            # Check for duplicate labels in running processes
+            if ent.label == process_label and ent.status == "running":
+                raise ValueError(
+                    f"Process with label '{process_label}' already running with PID {ent.pid}."
+                )
 
         if not working_directory.is_dir():
             raise ValueError(f"Working directory '{working_directory}' does not exist.")
@@ -265,11 +191,7 @@ class ProcessManager:  # noqa: D101
             proc=proc,
         )
 
-        logger.debug("start: acquiring lock for update")
-        with self._lock:
-            logger.debug("start: lock acquired for update")
-            self._processes[proc.pid] = ent
-        logger.debug("start: lock released after update")
+        self._storage.add_process(ent)
 
         logger.info("Process %s started", proc.pid)
         logger.debug(
@@ -292,11 +214,8 @@ class ProcessManager:  # noqa: D101
     # ------------------------------------------------------------------
 
     def list(self) -> ListProcessesResult:  # noqa: D401
-        logger.debug("list: acquiring lock")
-        with self._lock:
-            logger.debug("list: lock acquired")
-            res = [self._to_public_info(ent) for ent in self._processes.values()]
-        logger.debug("list: lock released")
+        process_snapshot = self._storage.get_processes_values_snapshot()
+        res = [self._to_public_info(ent) for ent in process_snapshot]
         return ListProcessesResult(processes=res)
 
     def get_status(
@@ -305,13 +224,10 @@ class ProcessManager:  # noqa: D101
         command_or_label: str | None = None,
         working_directory: Path | None = None,
     ) -> ProcessStatusResult:  # noqa: D401
-        logger.debug("get_status: acquiring lock")
-        with self._lock:
-            logger.debug("get_status: lock acquired")
-            target_pid, error = self._lookup_process(
-                pid, None, command_or_label, working_directory
-            )
-        logger.debug("get_status: lock released")
+        process_snapshot = self._storage.get_processes_values_snapshot()
+        target_pid, error = self._lookup_process_in_snapshot(
+            process_snapshot, pid, None, command_or_label, working_directory
+        )
 
         if error:
             return ProcessStatusResult(error=error)
@@ -319,23 +235,17 @@ class ProcessManager:  # noqa: D101
         if target_pid is None:
             return ProcessStatusResult(error="Process not found")
 
-        logger.debug("get_status: acquiring lock for pid=%d", target_pid)
-        with self._lock:
-            logger.debug("get_status: lock acquired for pid=%d", target_pid)
-            try:
-                ent = self._get_process_info_within_lock(target_pid)
-                result = ProcessStatusResult(
-                    pid=ent.pid,
-                    command=ent.command,
-                    working_directory=ent.working_directory,
-                    status=ent.status,
-                    label=ent.label,
-                )
-                logger.debug("get_status: lock released for pid=%d", target_pid)
-                return result
-            except ValueError as e:
-                logger.debug("get_status: lock released for pid=%d", target_pid)
-                return ProcessStatusResult(error=str(e))
+        ent = self._storage.get_process_snapshot(target_pid)
+        if ent is None:
+            return ProcessStatusResult(error=f"PID {target_pid} not found")
+
+        return ProcessStatusResult(
+            pid=ent.pid,
+            command=ent.command,
+            working_directory=ent.working_directory,
+            status=ent.status,
+            label=ent.label,
+        )
 
     # ------------------------------------------------------------------
     # Control helpers
@@ -354,14 +264,11 @@ class ProcessManager:  # noqa: D101
                 error="Either pid, command_or_label, or label must be provided to stop"
             )
 
-        # Use _lookup_process to find the process
-        logger.debug("stop: acquiring lock to find process")
-        with self._lock:
-            logger.debug("stop: lock acquired to find process")
-            pid_to_stop, error = self._lookup_process(
-                pid, label, command_or_label, working_directory
-            )
-        logger.debug("stop: lock released after finding process")
+        # Use _lookup_process_in_snapshot to find the process
+        process_snapshot = self._storage.get_processes_values_snapshot()
+        pid_to_stop, error = self._lookup_process_in_snapshot(
+            process_snapshot, pid, label, command_or_label, working_directory
+        )
 
         if error:
             return StopProcessResult(error=error)
@@ -369,15 +276,9 @@ class ProcessManager:  # noqa: D101
         if pid_to_stop is None:
             return StopProcessResult(error="Process not found")
 
-        logger.debug("stop: acquiring lock for pid=%d", pid_to_stop)
-        with self._lock:
-            logger.debug("stop: lock acquired for pid=%d", pid_to_stop)
-            try:
-                ent = self._get_process_info_within_lock(pid_to_stop)
-            except ValueError as e:
-                logger.debug("stop: lock released for pid=%d", pid_to_stop)
-                return StopProcessResult(error=str(e))
-        logger.debug("stop: lock released for pid=%d", pid_to_stop)
+        ent = self._storage.get_process_snapshot(pid_to_stop)
+        if ent is None:
+            return StopProcessResult(error=f"PID {pid_to_stop} not found")
 
         if ent.status != "running":
             return StopProcessResult(error=f"Process {pid_to_stop} is not running")
@@ -407,12 +308,13 @@ class ProcessManager:  # noqa: D101
             return StopProcessResult(error="timeout")
 
         # Process exited – record metadata.
-        with self._lock:
-            ent.status = "terminated"
-            ent.proc = None
-            if ent.exit_code is None:
-                ent.exit_code = 0
-            ent.exit_time = _get_iso_ts()
+        self._storage.update_process_in_place(
+            pid_to_stop,
+            status="terminated",
+            exit_code=ent.exit_code if ent.exit_code is not None else 0,
+            exit_time=_get_iso_ts(),
+            proc=None,
+        )
 
         logger.debug("event=stopped pid=%s exit_code=%s", pid_to_stop, ent.exit_code)
         return StopProcessResult(exit_code=ent.exit_code)
@@ -704,8 +606,9 @@ class ProcessManager:  # noqa: D101
     # Internals
     # ------------------------------------------------------------------
 
-    def _lookup_process(
+    def _lookup_process_in_snapshot(
         self,
+        process_snapshot: list[_ProcEntry],
         pid: int | None = None,
         label: str | None = None,
         command_or_label: str | None = None,
@@ -717,7 +620,7 @@ class ProcessManager:  # noqa: D101
 
         # If explicit label is provided, use it
         if label is not None:
-            for p in self._processes.values():
+            for p in process_snapshot:
                 if p.label == label and p.status == "running":
                     return p.pid, None
             return None, f"No running process found with label: {label}"
@@ -727,7 +630,7 @@ class ProcessManager:  # noqa: D101
             return None, "No pid, label, or command_or_label provided"
 
         # First try as label
-        for p in self._processes.values():
+        for p in process_snapshot:
             if p.label == command_or_label and p.status == "running":
                 return p.pid, None
 
@@ -735,7 +638,7 @@ class ProcessManager:  # noqa: D101
         try:
             candidates_by_command = [
                 p
-                for p in self._processes.values()
+                for p in process_snapshot
                 if p.command == shlex.split(command_or_label) and p.status == "running"
             ]
         except ValueError as e:
@@ -836,4 +739,5 @@ class ProcessManager:  # noqa: D101
             return False
 
 
+__ALL__ = ["ProcessManager"]
 __ALL__ = ["ProcessManager"]
