@@ -46,6 +46,14 @@ class ToolAction:
     port: int
 
 
+@dataclass
+class CLIMetadata:
+    """Common CLI metadata not specific to any action."""
+
+    verbose: int
+    log_path: Path
+
+
 CLIAction = ServeAction | RunAction | ToolAction
 
 
@@ -93,8 +101,8 @@ def parse_command_and_args(program: str, args: list[str]) -> tuple[str, list[str
     return command, run_args
 
 
-def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
-    """Parse command line arguments and return a CLIAction and log path."""
+def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
+    """Parse command line arguments and return a CLIAction and metadata."""
     parser = argparse.ArgumentParser(
         description="Process manager for multi-agent development workflows\n\nDocs: https://steveasleep.com/persistproc-mcp"
     )
@@ -304,8 +312,6 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         action = ServeAction(
             port=port_val,
             data_dir=data_dir_val,
-            verbose=verbose_val,
-            log_path=log_path,
         )
     elif args.command == "run":
         command, run_args = parse_command_and_args(args.program, args.args)
@@ -329,12 +335,13 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         parser.print_help()
         sys.exit(1)
 
-    return action, log_path
+    metadata = CLIMetadata(verbose=verbose_val, log_path=log_path)
+    return action, metadata
 
 
-def handle_cli_action(action: CLIAction, log_path: Path) -> None:
+def handle_cli_action(action: CLIAction, metadata: CLIMetadata) -> None:
     """Execute the action determined by the CLI."""
-    CLI_LOGGER.info("Verbose log for this run: %s", shlex.quote(str(log_path)))
+    CLI_LOGGER.info("Verbose log for this run: %s", shlex.quote(str(metadata.log_path)))
 
     if isinstance(action, ServeAction):
         serve(action.port, action.data_dir)
@@ -358,8 +365,8 @@ def handle_cli_action(action: CLIAction, log_path: Path) -> None:
 def cli() -> None:
     """Main CLI entry point."""
     try:
-        action, log_path = parse_cli(sys.argv[1:])
-        handle_cli_action(action, log_path)
+        action, metadata = parse_cli(sys.argv[1:])
+        handle_cli_action(action, metadata)
     except SystemExit as e:
         if e.code != 0:
             # argparse prints help and exits, so we only need to re-raise for actual errors
@@ -374,4 +381,5 @@ __all__ = [
     "RunAction",
     "ToolAction",
     "CLIAction",
+    "CLIMetadata",
 ]
