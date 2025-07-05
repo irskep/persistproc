@@ -3,6 +3,6 @@ description:
 globs: 
 alwaysApply: true
 ---
-REQUIRED: Always invoke Python-related commands via ./run-in-venv.sh, or use ./pp which invokes persistproc in the venv.
+REQUIRED: Always invoke Python-related commands via 'uv run', or use ./pp which invokes persistproc in the venv.
 FORBIDDEN: Never call bare `python`, `pytest`, or `pip` from a shell.
 ENCOURAGED: Disable coverage tests when filtering to specific tests
