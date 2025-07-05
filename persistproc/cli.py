@@ -3,7 +3,6 @@ import os
 import shlex
 import sys
 from pathlib import Path
-import logging
 from dataclasses import dataclass
 from argparse import Namespace
 from typing import Union, Any
@@ -99,7 +98,7 @@ def parse_command_and_args(program: str, args: list[str]) -> tuple[str, list[str
 def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
     """Parse command line arguments and return a CLIAction and log path."""
     parser = argparse.ArgumentParser(
-        description="Process manager for multi-agent development workflows"
+        description="Process manager for multi-agent development workflows\n\nDocs: https://steveasleep.com/persistproc-mcp"
     )
 
     # ------------------------------------------------------------------
@@ -162,7 +161,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
     subparsers = parser.add_subparsers(dest="command")
 
     # Serve command
-    p_serve = subparsers.add_parser(
+    p_serve = subparsers.add_parser(  # noqa: F841
         "serve", help="Start the MCP server", parents=[common_parser]
     )
 
