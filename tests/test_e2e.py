@@ -340,6 +340,16 @@ def test_run_kills_process_on_exit(server):
     # Terminate run gracefully.
     stop_run(run_proc)
 
+    # Wait for the process to actually be stopped (up to 10 seconds)
+    # This fixes the race condition where the test checks status before the stop completes
+    deadline = time.time() + 10.0
+    while time.time() < deadline:
+        listed = run_cli("list")
+        info = extract_json(listed.stdout)
+        if len(info["processes"]) == 1 and info["processes"][0]["status"] != "running":
+            break
+        time.sleep(0.5)
+
     # After run exits, there should be no running processes.
     listed = run_cli("list")
     info = extract_json(listed.stdout)
