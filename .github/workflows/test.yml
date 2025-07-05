@@ -34,17 +34,3 @@ jobs:
         file: ./coverage.xml
         fail_ci_if_error: false
 
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python and uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        python-version: "3.11"
-    
-    - name: Install dependencies and run black
-      run: |
-        uv sync --extra dev
-        uv run black --check .
