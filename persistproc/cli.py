@@ -38,6 +38,7 @@ class RunAction:
     port: int
     data_dir: Path
     verbose: int
+    label: str | None
 
 
 @dataclass
@@ -176,9 +177,6 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         help="The program to run (e.g. 'python' or 'ls'). If the string contains spaces, it will be shell-split unless additional arguments are provided separately.",
     )
     p_run.add_argument(
-        "args", nargs=argparse.REMAINDER, help="Arguments to the program"
-    )
-    p_run.add_argument(
         "--fresh",
         action="store_true",
         help="Stop an existing running instance of the same command before starting a new one.",
@@ -193,6 +191,14 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         "--raw",
         action="store_true",
         help="Show raw timestamped log lines (default strips ISO timestamps).",
+    )
+    p_run.add_argument(
+        "--label",
+        type=str,
+        help="Custom label for the process (default: '<command> in <working_directory>').",
+    )
+    p_run.add_argument(
+        "args", nargs=argparse.REMAINDER, help="Arguments to the program"
     )
 
     # ------------------------------------------------------------------
@@ -297,7 +303,6 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
     port_val = getattr(args, "port", get_default_port())
     data_dir_val = getattr(args, "data_dir", get_default_data_dir())
     verbose_val = getattr(args, "verbose", 0) - getattr(args, "quiet", 0)
-    print(f"verbose_val: {verbose_val}")
 
     action: CLIAction
     if args.command == "serve":
@@ -318,6 +323,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
             port=port_val,
             data_dir=data_dir_val,
             verbose=verbose_val,
+            label=getattr(args, "label", None),
         )
     elif args.command in tools_by_name:
         # Ensure tool sub-commands always have a `port` attribute so
@@ -351,6 +357,7 @@ def handle_cli_action(action: CLIAction, log_path: Path) -> None:
             on_exit=action.on_exit,
             raw=action.raw,
             port=action.port,
+            label=action.label,
         )
     elif isinstance(action, ToolAction):
         action.tool.call_with_args(action.args)

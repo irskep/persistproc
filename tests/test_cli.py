@@ -103,7 +103,7 @@ def test_parse_cli_restart_process_by_pid(mock_setup_logging):
     action, _ = parse_cli(["restart", "123"])
     assert isinstance(action, ToolAction)
     assert action.tool.name == "restart"
-    assert action.args.command_or_pid == "123"
+    assert action.args.target == "123"
     assert not action.args.args
 
 
@@ -112,7 +112,7 @@ def test_parse_cli_restart_process_by_command(mock_setup_logging):
     action, _ = parse_cli(["restart", "sleep", "10"])
     assert isinstance(action, ToolAction)
     assert action.tool.name == "restart"
-    assert action.args.command_or_pid == "sleep"
+    assert action.args.target == "sleep"
     assert action.args.args == ["10"]
 
 
@@ -121,7 +121,7 @@ def test_parse_cli_restart_process_by_command_and_cwd(mock_setup_logging):
     action, _ = parse_cli(["restart", "sleep", "10", "--working-directory", "/tmp"])
     assert isinstance(action, ToolAction)
     assert action.tool.name == "restart"
-    assert action.args.command_or_pid == "sleep"
+    assert action.args.target == "sleep"
     assert action.args.args == ["10"]
     assert action.args.working_directory == "/tmp"
 
@@ -149,7 +149,7 @@ def test_parse_cli_stop_process_by_pid(mock_setup_logging):
     action, _ = parse_cli(["stop", "123"])
     assert isinstance(action, ToolAction)
     assert action.tool.name == "stop"
-    assert action.args.command_or_pid == "123"
+    assert action.args.target == "123"
     assert not action.args.args
 
 
@@ -158,5 +158,43 @@ def test_parse_cli_stop_process_by_command(mock_setup_logging):
     action, _ = parse_cli(["stop", "sleep", "10"])
     assert isinstance(action, ToolAction)
     assert action.tool.name == "stop"
-    assert action.args.command_or_pid == "sleep"
+    assert action.args.target == "sleep"
     assert action.args.args == ["10"]
+
+
+def test_parse_cli_start_with_label(mock_setup_logging):
+    """Test `persistproc start echo hello --label my-label`."""
+    action, _ = parse_cli(["start", "echo", "hello", "--label", "my-label"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "start"
+    assert action.args.command_ == "echo"
+    assert action.args.args == ["hello"]
+    assert action.args.label == "my-label"
+
+
+def test_parse_cli_start_without_label(mock_setup_logging):
+    """Test `persistproc start echo hello` (no label)."""
+    action, _ = parse_cli(["start", "echo", "hello"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "start"
+    assert action.args.command_ == "echo"
+    assert action.args.args == ["hello"]
+    assert getattr(action.args, "label", None) is None
+
+
+def test_parse_cli_run_with_label(mock_setup_logging):
+    """Test `persistproc run --label my-label echo hello`."""
+    action, _ = parse_cli(["run", "--label", "my-label", "echo", "hello"])
+    assert isinstance(action, RunAction)
+    assert action.command == "echo"
+    assert action.run_args == ["hello"]
+    assert action.label == "my-label"
+
+
+def test_parse_cli_run_without_label(mock_setup_logging):
+    """Test `persistproc run echo hello` (no label)."""
+    action, _ = parse_cli(["run", "echo", "hello"])
+    assert isinstance(action, RunAction)
+    assert action.command == "echo"
+    assert action.run_args == ["hello"]
+    assert action.label is None
