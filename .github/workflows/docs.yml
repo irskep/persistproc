@@ -43,10 +43,13 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
           
-      - name: Install dependencies and run tests with coverage
+      - name: Install dependencies
         run: |
           uv sync --extra docs --extra dev
-          uv run pytest --cov=persistproc --cov-report=json
+          
+      - name: Run tests with coverage
+        run: |
+          uv run pytest -n auto --dist=worksteal --cov=persistproc --cov-report=json
           uv run coverage-badge -o coverage.svg
           cp coverage.svg docs/
           
