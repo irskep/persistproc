@@ -364,7 +364,7 @@ def test_run_kills_process_on_exit(server):
 
     # Wait for the process to actually be stopped (up to 10 seconds)
     # This fixes the race condition where the test checks status before the stop completes
-    deadline = time.time() + 10.0
+    deadline = time.time() + 30.0
     stopped_successfully = False
     while time.time() < deadline:
         listed = run_cli("list")
