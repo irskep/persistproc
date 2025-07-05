@@ -564,6 +564,8 @@ class ProcessManager:  # noqa: D101
         if not path.exists():
             return ProcessOutputResult(output=[])
 
+        filtered_lines: list[str] = []
+
         with path.open("r", encoding="utf-8") as fh:
             all_lines = fh.readlines()
 
@@ -575,7 +577,7 @@ class ProcessManager:  # noqa: D101
 
         if since_time:
             since_dt = _parse_iso(since_time)
-            all_lines = [
+            filtered_lines = [
                 ln for ln in all_lines if _parse_iso(ln.split(" ", 1)[0]) >= since_dt
             ]
         if before_time:
@@ -585,9 +587,33 @@ class ProcessManager:  # noqa: D101
             ]
 
         if lines is not None:
-            all_lines = all_lines[-lines:]
+            filtered_lines = all_lines[-lines:]
 
-        return ProcessOutputResult(output=all_lines)
+        if filtered_lines:
+            first_line_ts = _parse_iso(filtered_lines[0].split(" ", 1)[0])
+            last_line_ts = _parse_iso(filtered_lines[-1].split(" ", 1)[0])
+            lines_after = len(
+                [
+                    ln
+                    for ln in all_lines
+                    if _parse_iso(ln.split(" ", 1)[0]) >= first_line_ts
+                ]
+            )
+            lines_before = len(
+                [
+                    ln
+                    for ln in all_lines
+                    if _parse_iso(ln.split(" ", 1)[0]) <= last_line_ts
+                ]
+            )
+
+            return ProcessOutputResult(
+                output=filtered_lines,
+                lines_before=lines_before,
+                lines_after=lines_after,
+            )
+        else:
+            return ProcessOutputResult(output=[], lines_before=0, lines_after=0)
 
     def get_log_paths(
         self,
