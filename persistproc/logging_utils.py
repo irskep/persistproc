@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 import os
-from pathlib import Path
 import sys
+from datetime import datetime
+from pathlib import Path
 
 CLI_LOGGER_NAME = "persistproc.cli"
 
@@ -17,7 +17,6 @@ def get_is_quiet() -> bool:
 
 
 class CustomFormatter(logging.Formatter):
-
     regular = "\x1b[37;20m"
     grey = "\x1b[90;20m"
     yellow = "\x1b[33;20m"
@@ -91,9 +90,7 @@ def setup_logging(verbosity: int, data_dir: Path) -> Path:
         console_handler.setLevel(logging.WARNING)
 
         class _CliOnlyFilter(logging.Filter):
-            def filter(
-                self, record: logging.LogRecord
-            ) -> bool:  # noqa: D401 – simple predicate
+            def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401 – simple predicate
                 return record.name.startswith(CLI_LOGGER_NAME)
 
         console_handler.addFilter(_CliOnlyFilter())
@@ -102,9 +99,7 @@ def setup_logging(verbosity: int, data_dir: Path) -> Path:
         console_handler.setLevel(logging.INFO)
 
         class _CliOnlyFilter(logging.Filter):
-            def filter(
-                self, record: logging.LogRecord
-            ) -> bool:  # noqa: D401 – simple predicate
+            def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401 – simple predicate
                 return record.name.startswith(CLI_LOGGER_NAME)
 
         console_handler.addFilter(_CliOnlyFilter())

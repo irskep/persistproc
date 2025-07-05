@@ -2,15 +2,15 @@ import argparse
 import os
 import shlex
 import sys
-from pathlib import Path
-from dataclasses import dataclass
 from argparse import Namespace
-from typing import Union, Any
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
+from .logging_utils import CLI_LOGGER, setup_logging
 from .run import run
 from .serve import serve
 from .tools import ALL_TOOL_CLASSES
-from .logging_utils import CLI_LOGGER, setup_logging
 
 ENV_PORT = "PERSISTPROC_PORT"
 ENV_DATA_DIR = "PERSISTPROC_DATA_DIR"
@@ -48,7 +48,7 @@ class ToolAction:
     tool: Any
 
 
-CLIAction = Union[ServeAction, RunAction, ToolAction]
+CLIAction = ServeAction | RunAction | ToolAction
 
 
 def get_default_data_dir() -> Path:
@@ -323,7 +323,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         # Ensure tool sub-commands always have a `port` attribute so
         # downstream code doesn't crash when the user omitted --port.
         if not hasattr(args, "port"):
-            setattr(args, "port", port_val)
+            args.port = port_val
         tool = tools_by_name[args.command]
         action = ToolAction(args=args, tool=tool)
     else:

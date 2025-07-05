@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import subprocess
 import time
 from pathlib import Path
 from typing import Any
-import signal
-import os
 
 __all__ = [
     "run_cli",

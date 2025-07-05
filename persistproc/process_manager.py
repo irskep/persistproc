@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Comprehensive ProcessManager implementation.
-
 # Standard library imports
 import logging
 import os
@@ -10,11 +9,10 @@ import signal
 import subprocess
 import threading
 import time
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-import traceback
-from typing import Dict, List, Optional
 
 from persistproc.process_types import (
     ListProcessesResult,
@@ -22,9 +20,9 @@ from persistproc.process_types import (
     ProcessLogPathsResult,
     ProcessOutputResult,
     ProcessStatusResult,
+    RestartProcessResult,
     StartProcessResult,
     StopProcessResult,
-    RestartProcessResult,
 )
 
 __all__ = ["ProcessManager"]
@@ -61,15 +59,15 @@ _POLL_INTERVAL = float(os.environ.get("PERSISTPROC_TEST_POLL_INTERVAL", "1.0"))
 class _ProcEntry:  # noqa: D401 – internal state
     pid: int
     command: list[str]
-    working_directory: Optional[str]
-    environment: Optional[dict[str, str]]
+    working_directory: str | None
+    environment: dict[str, str] | None
     start_time: str
     status: str  # running | exited | terminated | failed
     log_prefix: str
-    exit_code: Optional[int] = None
-    exit_time: Optional[str] = None
+    exit_code: int | None = None
+    exit_time: str | None = None
     # Keep a reference so we can signal/poll. Excluded from comparisons.
-    proc: Optional[subprocess.Popen] = field(repr=False, compare=False, default=None)
+    proc: subprocess.Popen | None = field(repr=False, compare=False, default=None)
 
 
 class _LogManager:
@@ -139,25 +137,23 @@ class _LogManager:
 
 class ProcessManager:  # noqa: D101
     def __init__(self) -> None:  # noqa: D401 – simple init
-        self.data_dir: Optional[Path] = None
-        self._log_dir: Optional[Path] = None
-        self._server_log_path: Optional[Path] = None
+        self.data_dir: Path | None = None
+        self._log_dir: Path | None = None
+        self._server_log_path: Path | None = None
 
         self._processes: dict[int, _ProcEntry] = {}
         self._lock = threading.Lock()
         self._stop_evt = threading.Event()
 
         # monitor thread is started on first *bootstrap*
-        self._monitor_thread: Optional[threading.Thread] = None
-        self._log_mgr: Optional[_LogManager] = None
+        self._monitor_thread: threading.Thread | None = None
+        self._log_mgr: _LogManager | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle helpers
     # ------------------------------------------------------------------
 
-    def bootstrap(
-        self, data_dir: Path, server_log_path: Path | None = None
-    ) -> None:  # noqa: D401
+    def bootstrap(self, data_dir: Path, server_log_path: Path | None = None) -> None:  # noqa: D401
         """Must be called exactly once after CLI parsed *--data-dir*."""
         self.data_dir = data_dir
         self._log_dir = data_dir / "process_logs"
@@ -502,9 +498,9 @@ class ProcessManager:  # noqa: D101
         self,
         pid: int,
         stream: str,
-        lines: Optional[int] = None,
-        before_time: Optional[str] = None,
-        since_time: Optional[str] = None,
+        lines: int | None = None,
+        before_time: str | None = None,
+        since_time: str | None = None,
     ) -> ProcessOutputResult:  # noqa: D401
         logger.debug("get_output: acquiring lock for pid=%d", pid)
         with self._lock:
@@ -631,9 +627,7 @@ class ProcessManager:  # noqa: D101
                 raise ValueError(f"PID {pid} not found")
             return self._processes[pid]
 
-    def _require_unlocked(
-        self, pid: int
-    ) -> _ProcEntry:  # noqa: D401 – helper (assumes lock held)
+    def _require_unlocked(self, pid: int) -> _ProcEntry:  # noqa: D401 – helper (assumes lock held)
         if pid not in self._processes:
             raise ValueError(f"PID {pid} not found")
         return self._processes[pid]
@@ -690,9 +684,7 @@ class ProcessManager:  # noqa: D101
             os.killpg(os.getpgid(pid), sig)  # type: ignore[arg-type]
 
     @staticmethod
-    def _wait_for_exit(
-        proc: Optional[subprocess.Popen], timeout: float
-    ) -> bool:  # noqa: D401
+    def _wait_for_exit(proc: subprocess.Popen | None, timeout: float) -> bool:  # noqa: D401
         if proc is None:
             return True
         logger.debug(

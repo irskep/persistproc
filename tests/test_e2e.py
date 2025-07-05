@@ -1,6 +1,7 @@
-from tests.helpers import run_cli, extract_json, start_run, stop_run
-from pathlib import Path
 import time
+from pathlib import Path
+
+from tests.helpers import extract_json, run_cli, start_run, stop_run
 
 COUNTER_SCRIPT = Path(__file__).parent / "scripts" / "counter.py"
 
@@ -385,9 +386,9 @@ def test_run_detach_keeps_process_running(server):
     info_after = extract_json(after.stdout)
     proc_after = next((p for p in info_after["processes"] if p["pid"] == pid), None)
 
-    assert (
-        proc_after is not None
-    ), f"Process with PID {pid} disappeared after run detached"
+    assert proc_after is not None, (
+        f"Process with PID {pid} disappeared after run detached"
+    )
     assert proc_after["status"] == "running"
 
     # 5. Cleanup.

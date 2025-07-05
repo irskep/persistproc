@@ -1,6 +1,6 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import List
 from enum import Enum
 
 __all__ = [
@@ -47,27 +47,27 @@ class StopProcessResult:
 @dataclass
 class ProcessInfo:
     pid: int
-    command: List[str]
+    command: list[str]
     working_directory: str
     status: str
 
 
 @dataclass
 class ListProcessesResult:
-    processes: List[ProcessInfo]
+    processes: list[ProcessInfo]
 
 
 @dataclass
 class ProcessStatusResult:
     pid: int
-    command: List[str]
+    command: list[str]
     working_directory: str
     status: str
 
 
 @dataclass
 class ProcessOutputResult:
-    output: List[str]
+    output: list[str]
 
 
 @dataclass

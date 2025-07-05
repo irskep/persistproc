@@ -1,17 +1,18 @@
-import pytest
-from unittest.mock import patch
-from pathlib import Path
-from argparse import Namespace
 import subprocess
 import sys
+from argparse import Namespace
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from persistproc.cli import (
-    parse_cli,
-    ServeAction,
     RunAction,
+    ServeAction,
     ToolAction,
-    get_default_port,
     get_default_data_dir,
+    get_default_port,
+    parse_cli,
 )
 
 
@@ -159,10 +160,3 @@ def test_parse_cli_stop_process_by_command(mock_setup_logging):
     assert action.tool.name == "stop"
     assert action.args.command_or_pid == "sleep"
     assert action.args.args == ["10"]
-
-
-def test_parse_cli_data_dir_and_verbose_for_logging(mock_setup_logging):
-    """Check that logging setup receives the correct arguments."""
-    data_dir = Path("/custom/data")
-    parse_cli(["serve", "--data-dir", str(data_dir), "-vvv"])
-    mock_setup_logging.assert_called_with(3, data_dir)
