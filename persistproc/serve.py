@@ -4,9 +4,7 @@ import logging
 from pathlib import Path
 
 from fastmcp import FastMCP
-from rich import print, print_json
-
-from .console import console
+from .console import print_rule, print_json, print_rich
 from .logging_utils import CLI_LOGGER, get_is_quiet
 from .process_manager import ProcessManager
 from .tools import ALL_TOOL_CLASSES
@@ -51,30 +49,15 @@ def serve(port: int, data_dir: Path) -> None:  # noqa: D401
     CLI_LOGGER.info("Starting MCP server on %s", url)
 
     if not get_is_quiet():
-
-        def safe_rule(title: str = "") -> None:
-            """Print a console rule with fallback for Windows encoding issues."""
-            try:
-                if title:
-                    console.rule(f"[bold yellow]{title}[/bold yellow]")
-                else:
-                    console.rule()
-            except UnicodeEncodeError:
-                # Fallback for Windows cp1252 encoding issues
-                if title:
-                    print(f"--- {title} ---")
-                else:
-                    print("-" * 50)
-
         # centered, with ------ lines above and below
-        safe_rule("Cursor")
+        print_rule("Cursor")
         print("In ~/.cursor/mcp.json:")
         print_json(data={"mcpServers": {"persistproc": {"url": url}}})
-        safe_rule("Claude Code")
+        print_rule("Claude Code")
         print()
         print(f"claude mcp add --transport http persistproc {url}")
         print()
-        safe_rule("Gemini CLI")
+        print_rule("Gemini CLI")
         print("In ~/.gemini/settings.json:")
         print_json(
             data={
@@ -86,22 +69,22 @@ def serve(port: int, data_dir: Path) -> None:  # noqa: D401
                 }
             }
         )
-        safe_rule("Other")
+        print_rule("Other")
         print()
         print(f"persistproc uses the HTTP transport protocol on {url}.")
         print("Read your agent's documentation to learn how to hook it up.")
         print()
-        print(
+        print_rich(
             "[link=https://www.anthropic.com/products/claude-desktop]Claude Desktop[/link]"
         )
         print()
-        print("[link=https://docs.codeium.com/windsurf/mcp]Windsurf[/link]")
+        print_rich("[link=https://docs.codeium.com/windsurf/mcp]Windsurf[/link]")
         print()
-        print(
+        print_rich(
             "[link=https://github.com/openai/codex?tab=readme-ov-file#model-context-protocol-mcp]Codex CLI[/link]"
         )
         print()
-        safe_rule()
+        print_rule()
 
     try:
         app.run(transport="http", host="127.0.0.1", port=port, path="/mcp/")

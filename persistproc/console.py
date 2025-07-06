@@ -1,29 +1,54 @@
 import os
-import sys
 from rich.console import Console
+from rich import print as rich_print, print_json as rich_print_json
 
-# Configure console for Windows compatibility
-# Handle Unicode encoding errors that occur on Windows with cp1252 encoding
+# Cross-platform output helpers that use Rich on Unix but plain output on Windows
 
-# Set UTF-8 environment for Windows to prevent encoding issues
-if os.name == "nt":
-    # Force UTF-8 encoding on Windows
-    os.environ.setdefault("PYTHONUTF8", "1")
 
-    # Reconfigure stdout/stderr with UTF-8 encoding and error handling
-    try:
-        import io
+def print_rule(title: str = "") -> None:
+    """Print a horizontal rule with optional title."""
+    if os.name == "nt":
+        # Windows: Plain text rule
+        if title:
+            print(f"--- {title} ---")
+        else:
+            print("-" * 50)
+    else:
+        # Unix: Rich formatted rule
+        console = Console()
+        if title:
+            console.rule(f"[bold yellow]{title}[/bold yellow]")
+        else:
+            console.rule()
 
-        if hasattr(sys.stdout, "buffer"):
-            sys.stdout = io.TextIOWrapper(
-                sys.stdout.buffer, encoding="utf-8", errors="replace"
-            )
-        if hasattr(sys.stderr, "buffer"):
-            sys.stderr = io.TextIOWrapper(
-                sys.stderr.buffer, encoding="utf-8", errors="replace"
-            )
-    except (AttributeError, OSError):
-        # Fallback if buffer attribute doesn't exist or reconfiguration fails
-        pass
 
-console = Console()
+def print_json(data) -> None:
+    """Print JSON data with formatting."""
+    if os.name == "nt":
+        # Windows: Plain JSON
+        import json
+
+        print(json.dumps(data, indent=2))
+    else:
+        # Unix: Rich formatted JSON
+        rich_print_json(data=data)
+
+
+def print_rich(*args, **kwargs) -> None:
+    """Print with Rich formatting on Unix, plain on Windows."""
+    if os.name == "nt":
+        # Windows: Strip Rich markup and use plain print
+        plain_args = []
+        for arg in args:
+            if isinstance(arg, str):
+                # Simple Rich markup removal
+                import re
+
+                plain_arg = re.sub(r"\[/?[^\]]*\]", "", str(arg))
+                plain_args.append(plain_arg)
+            else:
+                plain_args.append(arg)
+        print(*plain_args)
+    else:
+        # Unix: Use Rich print
+        rich_print(*args, **kwargs)
