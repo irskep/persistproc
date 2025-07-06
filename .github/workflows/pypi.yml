@@ -28,6 +28,7 @@ jobs:
     - name: Install dependencies and build
       run: |
         uv sync --extra dev
+        uv build
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
