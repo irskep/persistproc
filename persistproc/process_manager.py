@@ -774,22 +774,46 @@ class ProcessManager:  # noqa: D101
             if sys.platform == "win32":
                 import signal as sig_module
 
-                if sig_type == "TERM":
-                    os.kill(pid, sig_module.SIGTERM)
-                elif sig_type == "KILL":
-                    os.kill(pid, sig_module.SIGTERM)  # Windows doesn't have SIGKILL
+                try:
+                    if sig_type == "TERM":
+                        os.kill(pid, sig_module.SIGTERM)
+                    elif sig_type == "KILL":
+                        os.kill(pid, sig_module.SIGTERM)  # Windows doesn't have SIGKILL
+                except (ProcessLookupError, PermissionError, OSError) as e:
+                    logger.debug(
+                        "Failed to send %s signal to pid %s via os.kill: %s",
+                        sig_type,
+                        pid,
+                        e,
+                    )
             else:
-                if sig_type == "TERM":
-                    os.killpg(os.getpgid(pid), signal.SIGTERM)
-                elif sig_type == "KILL":
-                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                try:
+                    if sig_type == "TERM":
+                        os.killpg(os.getpgid(pid), signal.SIGTERM)
+                    elif sig_type == "KILL":
+                        os.killpg(os.getpgid(pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError) as e:
+                    logger.debug(
+                        "Failed to send %s signal to process group for pid %s: %s",
+                        sig_type,
+                        pid,
+                        e,
+                    )
             return
 
         # Use subprocess methods when available (preferred)
-        if sig_type == "TERM":
-            ent.proc.terminate()
-        elif sig_type == "KILL":
-            ent.proc.kill()
+        try:
+            if sig_type == "TERM":
+                ent.proc.terminate()
+            elif sig_type == "KILL":
+                ent.proc.kill()
+        except (ProcessLookupError, PermissionError, OSError) as e:
+            logger.debug(
+                "Failed to send %s signal to pid %s via subprocess: %s",
+                sig_type,
+                pid,
+                e,
+            )
 
     @staticmethod
     def _wait_for_exit(proc: subprocess.Popen | None, timeout: float) -> bool:  # noqa: D401

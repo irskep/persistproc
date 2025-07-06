@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -140,15 +141,11 @@ class FakeSubprocessPopen:
     def wait(self, timeout: float | None = None) -> int:
         """Simulate waiting for process."""
         if self.returncode is None:
-            if timeout is not None and timeout <= 0:
-                # Simulate timeout without importing subprocess
-                class FakeTimeoutExpired(Exception):
-                    def __init__(self, cmd, timeout):
-                        self.cmd = cmd
-                        self.timeout = timeout
-
-                raise FakeTimeoutExpired(cmd=["fake"], timeout=timeout)
-            # For testing, assume process exits immediately
+            if timeout is not None:
+                # For fake processes, if returncode is None and we have a timeout,
+                # simulate a timeout since the process hasn't "exited" yet
+                raise subprocess.TimeoutExpired(cmd=["fake"], timeout=timeout)
+            # For testing, assume process exits immediately when no timeout
             self.returncode = 0
         return self.returncode
 
