@@ -152,12 +152,20 @@ def stop_run(proc: subprocess.Popen[str], timeout: float = 15.0) -> None:
         return
 
     # Send interrupt signal cross-platform
-    if os.name == "nt":
-        # Windows: Use CTRL_C_EVENT
-        proc.send_signal(signal.CTRL_C_EVENT)
-    else:
-        # Unix-like: Use SIGINT
-        proc.send_signal(signal.SIGINT)
+    try:
+        if os.name == "nt":
+            # Windows: Use CTRL_C_EVENT, but fallback to terminate if that fails
+            try:
+                proc.send_signal(signal.CTRL_C_EVENT)
+            except (OSError, AttributeError):
+                # CTRL_C_EVENT may not work in all contexts, fallback to terminate
+                proc.terminate()
+        else:
+            # Unix-like: Use SIGINT
+            proc.send_signal(signal.SIGINT)
+    except (ProcessLookupError, PermissionError):
+        # Process may have already exited
+        pass
 
     try:
         # Wait for the process to terminate. The `run` command's own logic
