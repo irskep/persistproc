@@ -4,7 +4,7 @@ uv = "latest"
 
 [tasks]
 "deps:sync" = "uv sync --extra docs --extra dev"
-"docs:prepare" = "scripts/prepare-docs.sh"
+"docs:prepare" = { run = "scripts/prepare-docs.sh", sources = ["tests/**/*", "persistproc/**/*", "scripts/**/*", "README.md"], outputs = ["docs/index.md", "docs/tools.md"] }
 "docs:build" = { depends = ["docs:prepare"], run = "mkdocs build --strict" }
 "docs:serve" = { depends = ["docs:prepare"], run = "mkdocs serve" }
 "docs:build-local" = { depends = ["docs:prepare"], run = "mkdocs build --strict -f mkdocs-local.yml" }

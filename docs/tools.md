@@ -30,24 +30,24 @@ options:
                         $PERSISTPROC_FORMAT)
 ```
 
-### Examples
+**Examples**
 
 Start the server with default settings:
 
 ```bash
-persistproc serve
+> persistproc serve
 ```
 
 Customize the port:
 
 ```bash
-persistproc serve --port 9000
+> persistproc serve --port 9000
 ```
 
 Enable verbose logging:
 
 ```bash
-persistproc serve -v
+> persistproc serve -v
 ```
 
 ## `run`
@@ -92,32 +92,32 @@ options:
                         <working_directory>').
 ```
 
-### Examples
+**Examples**
 
 Most commands work without any special syntax:
 
 ```bash
-persistproc run npm run dev
-persistproc run python -m http.server 8080
+> persistproc run npm run dev
+> persistproc run python -m http.server 8080
 ```
 
 When your command has flags that conflict with persistproc's own flags, use `--` to separate them:
 
 ```bash
-persistproc run -- echo -v "verbose output"
-persistproc run -- ls -v
+> persistproc run -- echo -v "verbose output"
+> persistproc run -- ls -v
 ```
 
 You can also pass commands as shell-escaped strings:
 
 ```bash
-persistproc run 'echo "Hello World"'
+> persistproc run 'echo "Hello World"'
 ```
 
 Use labels to identify complex processes more easily:
 
 ```bash
-persistproc run --label "api-server" 'python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug'
+> persistproc run --label "api-server" 'python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug'
 ```
 
 The `--fresh` flag stops any existing instance before starting:
@@ -130,10 +130,10 @@ Control what happens when you press Ctrl+C (default is to ask):
 
 ```bash
 # Stop the process when you exit
-persistproc run --on-exit stop npm run dev
+> persistproc run --on-exit stop npm run dev
 
 # Leave process running when you exit
-persistproc run --on-exit detach npm run dev
+> persistproc run --on-exit detach npm run dev
 ```
 
 ## `start`
@@ -169,38 +169,46 @@ options:
                         <working_directory>').
 ```
 
-### Examples
+**Examples**
 
 Basic usage:
 
 ```bash
-persistproc start npm run dev
-persistproc start python -m http.server 8080
+> persistproc start npm run dev
+Started process with PID: 12345
+Label: npm run dev in /Users/user/myproject
+Stdout log: /Users/user/Library/Application Support/persistproc/logs/12345_stdout.log
+Stderr log: /Users/user/Library/Application Support/persistproc/logs/12345_stderr.log
+Combined log: /Users/user/Library/Application Support/persistproc/logs/12345_combined.log
+```
+
+```bash
+> persistproc start python -m http.server 8080
 ```
 
 Unlike `run`, the `start` command doesn't stream output, so you typically don't need `--` for flag conflicts:
 
 ```bash
-persistproc start echo -v "verbose output"
+> persistproc start echo -v "verbose output"
 ```
 
 Specify a working directory:
 
 ```bash
-persistproc start --working-directory /path/to/project npm run dev
+> persistproc start --working-directory /path/to/project npm run dev
 ```
 
 Use shell-escaped strings for complex commands:
 
 ```bash
-persistproc start 'echo "Hello World"'
-persistproc start 'bash -c "cd /tmp && python -m http.server 9000"'
+> persistproc start 'echo "Hello World"'
+> persistproc start 'bash -c "cd /tmp && python -m http.server 9000"'
 ```
 
 Add a custom label for complex commands:
 
 ```bash
-persistproc start --label "worker-pool" 'celery -A myapp worker --loglevel=info --concurrency=4 --queues=high_priority,low_priority'
+> persistproc start --label "worker-pool" 'celery -A myapp worker --loglevel=info --concurrency=4 --queues=high_priority,low_priority'
 ```
 
 ## `list`
@@ -225,17 +233,24 @@ options:
                         $PERSISTPROC_FORMAT)
 ```
 
-### Examples
+**Examples**
 
 ```bash
-persistproc list
+> persistproc list
+PID 12345: npm run dev in /Users/user/myproject (running)
+Command: npm run dev
+Working directory: /Users/user/myproject
+
+PID 67890: python -m http.server 8080 in /Users/user/docs (running)
+Command: python -m http.server 8080
+Working directory: /Users/user/docs
 ```
 
 Get more detailed output or different formats:
 
 ```bash
-persistproc list -v
-persistproc list --format json
+> persistproc list -v
+> persistproc list --format json
 ```
 
 ## `status`
@@ -268,26 +283,32 @@ options:
                         The working directory for the process.
 ```
 
-### Examples
+**Examples**
 
 Get status by PID, command, or label:
 
 ```bash
-persistproc status 12345
-persistproc status npm run dev
-persistproc status "my-dev-server"
+> persistproc status 12345
+PID: 12345
+Command: npm run dev
+Working directory: /Users/user/myproject
+Status: running
+Label: npm run dev in /Users/user/myproject
+
+> persistproc status npm run dev
+> persistproc status "my-dev-server"
 ```
 
 Add working directory context when matching by command:
 
 ```bash
-persistproc status --working-directory /path/to/project npm run dev
+> persistproc status --working-directory /path/to/project npm run dev
 ```
 
 Get structured output:
 
 ```bash
-persistproc status --format json 12345
+> persistproc status --format json 12345
 ```
 
 ## `stop`
@@ -321,31 +342,39 @@ options:
   --force               Force stop the process.
 ```
 
-### Examples
+**Examples**
 
 Stop a process by PID, command, or label:
 
 ```bash
-persistproc stop 12345
-persistproc stop npm run dev
-persistproc stop "my-dev-server"
+> persistproc stop 12345
+Process stopped with exit code: 0
+
+> persistproc stop npm run dev
+> persistproc stop "my-dev-server"
 ```
 
 Add working directory context when matching by command:
 
 ```bash
-persistproc stop --working-directory /path/to/project npm run dev
+> persistproc stop --working-directory /path/to/project npm run dev
 ```
 
 Force stop if the process doesn't respond to normal termination:
 
 ```bash
-persistproc stop --force 12345
+> persistproc stop --force 12345
 ```
 
 ## `restart`
 
 Stops a process and starts it again with the same arguments and working directory.
+
+First, the process shut down completely. If the process fails to shut down within xxx, returns an error. TODO cross reference with 'stop'
+
+Then, the command, working directory, and environment variables are reused to start a fresh copy of the process.
+
+`output` will only return the logs for the latest copy of the process, not the history of every run.
 
 <!-- persistproc restart --help -->
 ```
@@ -373,20 +402,22 @@ options:
                         The working directory for the process.
 ```
 
-### Examples
+**Examples**
 
 Restart a process by PID, command, or label:
 
 ```bash
-persistproc restart 12345
-persistproc restart npm run dev
-persistproc restart "my-dev-server"
+> persistproc restart 12345
+Process restarted with PID: 54321
+
+> persistproc restart npm run dev
+> persistproc restart "my-dev-server"
 ```
 
 Add working directory context when matching by command:
 
 ```bash
-persistproc restart --working-directory /path/to/project npm run dev
+> persistproc restart --working-directory /path/to/project npm run dev
 ```
 
 ## `output`
@@ -429,41 +460,51 @@ options:
                         The working directory for the process.
 ```
 
-### Examples
+**Examples**
 
 Get recent output from a process:
 
 ```bash
-persistproc output 12345
-persistproc output npm run dev
-persistproc output "my-dev-server"
+> persistproc output 12345
+[2024-07-06 14:30:21] > dev-server@1.0.0 dev
+[2024-07-06 14:30:21] > vite
+[2024-07-06 14:30:22] 
+[2024-07-06 14:30:22]   VITE v4.4.0  ready in 324 ms
+[2024-07-06 14:30:22] 
+[2024-07-06 14:30:22]   ➜  Local:   http://localhost:5173/
+[2024-07-06 14:30:22]   ➜  Network: use --host to expose
+[2024-07-06 14:30:22] 
+[2024-07-06 14:30:22]   ➜  press h to show help
+
+> persistproc output npm run dev
+> persistproc output "my-dev-server"
 ```
 
 Specify which output stream to read:
 
 ```bash
-persistproc output --stream stderr 12345
-persistproc output --stream stdout 12345
-persistproc output --stream combined 12345
+> persistproc output --stream stderr 12345
+> persistproc output --stream stdout 12345
+> persistproc output --stream combined 12345
 ```
 
 Limit the number of lines:
 
 ```bash
-persistproc output --lines 50 12345
+> persistproc output --lines 50 12345
 ```
 
 Get output from a specific time range:
 
 ```bash
-persistproc output --since-time "2024-01-01T10:00:00" 12345
-persistproc output --before-time "2024-01-01T12:00:00" 12345
+> persistproc output --since-time "2024-01-01T10:00:00" 12345
+> persistproc output --before-time "2024-01-01T12:00:00" 12345
 ```
 
 Specify working directory context when matching by command:
 
 ```bash
-persistproc output --working-directory /path/to/project npm run dev
+> persistproc output --working-directory /path/to/project npm run dev
 ```
 
 ## `get_log_paths`
@@ -496,20 +537,23 @@ options:
                         The working directory for the process.
 ```
 
-### Examples
+**Examples**
 
 Get log file paths by PID, command, or label:
 
 ```bash
-persistproc get_log_paths 12345
-persistproc get_log_paths npm run dev
-persistproc get_log_paths "my-dev-server"
+> persistproc get_log_paths 12345
+Stdout log: /Users/user/Library/Application Support/persistproc/logs/12345_stdout.log
+Stderr log: /Users/user/Library/Application Support/persistproc/logs/12345_stderr.log
+
+> persistproc get_log_paths npm run dev
+> persistproc get_log_paths "my-dev-server"
 ```
 
 Add working directory context when matching by command:
 
 ```bash
-persistproc get_log_paths --working-directory /path/to/project npm run dev
+> persistproc get_log_paths --working-directory /path/to/project npm run dev
 ```
 
 ## `kill_persistproc`
@@ -534,14 +578,15 @@ options:
                         $PERSISTPROC_FORMAT)
 ```
 
-### Examples
+**Examples**
 
 ```bash
-persistproc kill_persistproc
+> persistproc kill_persistproc
+Killed persistproc server with PID: 8947
 ```
 
 Get structured output showing the server PID:
 
 ```bash
-persistproc kill_persistproc --format json
+> persistproc kill_persistproc --format json
 ```

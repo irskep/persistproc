@@ -9,6 +9,9 @@ def get_help_text(command):
     # For example, on macOS, it might be /Users/user vs /Users/user.
     # A simple regex is probably better.
 
+    print(f"Fetching help for: {command}")
+    print("⏳ Running command...", end="", flush=True)
+
     cmd_array = ["./pp"] + command.split() + ["--help"]
 
     result = subprocess.run(
@@ -17,6 +20,8 @@ def get_help_text(command):
         text=True,
         check=True,
     )
+
+    print(" ✅")  # Complete the progress line
 
     output_lines = result.stdout.splitlines()
     filtered_output_lines = [
@@ -62,7 +67,8 @@ def main():
                     new_lines.extend(
                         help_text.strip().splitlines()
                     )  # Add the help text
-                except subprocess.CalledProcessError:
+                except subprocess.CalledProcessError as e:
+                    print(f" ❌ Error getting help for {command}: {e}")
                     # If error, keep original content or leave empty
                     while i < len(lines) and lines[i].strip() != "```":
                         i += 1  # Skip original content until closing ```

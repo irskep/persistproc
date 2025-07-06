@@ -4,6 +4,11 @@ site_url: https://persistproc.readthedocs.io/
 repo_url: https://github.com/irskep/persistproc-mcp
 repo_name: irskep/persistproc-mcp
 
+nav:
+  - Home: index.md
+  - tools.md
+  - labels.md
+
 theme:
   name: material
   palette:
@@ -63,10 +68,6 @@ plugins:
             docstring_style: sphinx
   - gh-admonitions
 
-nav:
-  - Home: index.md
-  - Tools and commands: tools.md
-  - Labels: labels.md
 
 extra:
   social:
