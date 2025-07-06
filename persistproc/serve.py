@@ -21,8 +21,8 @@ def _build_app(pm: ProcessManager) -> FastMCP:  # noqa: D401 – helper
     """Return a *FastMCP* application with all *persistproc* tools registered."""
 
     app = FastMCP(
-        "PersistProc",
-        "A shared process layer for multi-agent development workflows.",
+        "persistproc",
+        "Manage long-running processes and read their output",
     )
 
     for tool_cls in ALL_TOOL_CLASSES:
