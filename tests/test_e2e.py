@@ -82,9 +82,7 @@ def test_process_has_output(server):
     time.sleep(1)
 
     # Get the output of the process.
-    output = run_cli(
-        "get-output", "--stream", "stdout", "--lines", "10", "--", str(pid)
-    )
+    output = run_cli("output", "--stream", "stdout", "--lines", "10", "--", str(pid))
     output_lines = extract_json(output.stdout)["output"]
     assert isinstance(output_lines, list)
     assert len(output_lines) > 0
@@ -104,14 +102,14 @@ def test_process_has_output(server):
 
 
 def test_get_process_status(server):
-    """Test get_status tool."""
+    """Test status tool."""
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
     start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
     # Get detailed status
-    status = run_cli("get-status", str(pid))
+    status = run_cli("status", str(pid))
     status_data = extract_json(status.stdout)
 
     assert status_data["pid"] == pid
@@ -156,7 +154,7 @@ def test_start_process_with_working_directory(server):
     pid = data["pid"]
 
     # Verify the process started
-    status = run_cli("get-status", str(pid))
+    status = run_cli("status", str(pid))
     status_data = extract_json(status.stdout)
     assert status_data["pid"] == pid
     assert "working_directory" in status_data
@@ -174,7 +172,7 @@ def test_start_process_with_environment(server):
     pid = data["pid"]
 
     # Verify the process started
-    status = run_cli("get-status", str(pid))
+    status = run_cli("status", str(pid))
     status_data = extract_json(status.stdout)
     assert status_data["pid"] == pid
 
@@ -204,7 +202,7 @@ def test_stop_process_with_force(server):
 
 
 def test_get_process_output_stderr(server):
-    """Test get_output with stderr stream."""
+    """Test output with stderr stream."""
     # Use a script that writes to stderr
     start_cmd = "python -c \"import sys; import time; [print('error', i, file=sys.stderr) or time.sleep(0.1) for i in range(20)]\""
     start = run_cli("start", start_cmd)
@@ -214,7 +212,7 @@ def test_get_process_output_stderr(server):
     time.sleep(1)
 
     # Get stderr output
-    output = run_cli("get-output", "--stream", "stderr", "--lines", "5", "--", str(pid))
+    output = run_cli("output", "--stream", "stderr", "--lines", "5", "--", str(pid))
     output_data = extract_json(output.stdout)
     output_lines = output_data["output"]
     assert isinstance(output_lines, list)
@@ -228,7 +226,7 @@ def test_get_process_output_stderr(server):
 
 
 def test_get_process_output_with_lines_limit(server):
-    """Test get_output with lines parameter."""
+    """Test output with lines parameter."""
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
     start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
@@ -237,7 +235,7 @@ def test_get_process_output_with_lines_limit(server):
     time.sleep(2)  # Let it generate some output
 
     # Get limited output
-    output = run_cli("get-output", "--stream", "stdout", "--lines", "3", "--", str(pid))
+    output = run_cli("output", "--stream", "stdout", "--lines", "3", "--", str(pid))
     output_data = extract_json(output.stdout)
     output_lines = output_data["output"]
     assert isinstance(output_lines, list)
@@ -248,7 +246,7 @@ def test_get_process_output_with_lines_limit(server):
 
 
 def test_get_process_output_with_time_filters(server):
-    """Test get_output with before_time and since_time parameters."""
+    """Test output with before_time and since_time parameters."""
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
     start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
@@ -265,7 +263,7 @@ def test_get_process_output_with_time_filters(server):
 
     # Get output since timestamp
     output = run_cli(
-        "get-output",
+        "output",
         "--stream",
         "stdout",
         "--lines",
@@ -281,7 +279,7 @@ def test_get_process_output_with_time_filters(server):
     # Get output before a future timestamp
     future_timestamp = datetime.datetime.now().isoformat()
     output = run_cli(
-        "get-output",
+        "output",
         "--stream",
         "stdout",
         "--lines",

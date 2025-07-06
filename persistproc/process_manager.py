@@ -19,6 +19,7 @@ from pathlib import Path
 from persistproc.log_manager import LogManager
 from persistproc.process_storage_manager import ProcessStorageManager, _ProcEntry
 from persistproc.process_types import (
+    KillPersistprocResult,
     ListProcessesResult,
     ProcessInfo,
     ProcessLogPathsResult,
@@ -581,7 +582,7 @@ class ProcessManager:  # noqa: D101
         paths = self._log_mgr.paths_for(ent.log_prefix)
         return ProcessLogPathsResult(stdout=str(paths.stdout), stderr=str(paths.stderr))
 
-    def kill_persistproc(self) -> dict[str, int]:  # noqa: D401
+    def kill_persistproc(self) -> KillPersistprocResult:  # noqa: D401
         """Kill all managed processes and then kill the server process."""
         server_pid = os.getpid()
         logger.info("event=kill_persistproc_start server_pid=%s", server_pid)
@@ -597,6 +598,8 @@ class ProcessManager:  # noqa: D101
                 len(processes_to_kill),
             )
 
+        unkilled_processes: list[tuple[int, str]] = []
+
         # Kill each process
         for ent in processes_to_kill:
             if ent.status == "running":
@@ -606,7 +609,9 @@ class ProcessManager:  # noqa: D101
                     " ".join(ent.command),
                 )
                 try:
-                    self.stop(ent.pid, force=True)
+                    result = self.stop(ent.pid, force=True)
+                    if result.error is not None:
+                        unkilled_processes.append((ent.pid, result.error))
                     logger.debug("event=kill_persistproc_stopped pid=%s", ent.pid)
                 except Exception as e:
                     logger.warning(
@@ -619,6 +624,16 @@ class ProcessManager:  # noqa: D101
 
         logger.info("event=kill_persistproc_complete server_pid=%s", server_pid)
 
+        if unkilled_processes:
+            logger.warning(
+                "event=kill_persistproc_failed_to_kill_processes count=%s",
+                len(unkilled_processes),
+            )
+            for pid, error in unkilled_processes:
+                logger.warning(
+                    "event=kill_persistproc_failed_to_kill pid=%s error=%s", pid, error
+                )
+
         # Schedule server termination after a brief delay to allow response to be sent
         def _kill_server():
             time.sleep(0.1)  # Brief delay to allow response to be sent
@@ -627,7 +642,10 @@ class ProcessManager:  # noqa: D101
 
         threading.Thread(target=_kill_server, daemon=True).start()
 
-        return {"pid": server_pid}
+        return KillPersistprocResult(
+            pid=server_pid,
+            error="\n".join([f"{pid}: {error}" for pid, error in unkilled_processes]),
+        )
 
     # ------------------------------------------------------------------
     # Internals

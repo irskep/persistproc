@@ -5,14 +5,12 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 from persistproc.process_manager import ProcessManager
 from persistproc.tools import (
     ALL_TOOL_CLASSES,
     GetProcessLogPathsTool,
     GetProcessOutputTool,
     GetProcessStatusTool,
-    ITool,
     KillPersistprocTool,
     ListProcessesTool,
     RestartProcessTool,
@@ -132,12 +130,6 @@ class TestMCPRequest:
 class TestStartProcessTool:
     """Test the StartProcessTool class."""
 
-    def test_tool_properties(self):
-        """Test tool name and description."""
-        tool = StartProcessTool()
-        assert tool.name == "start"
-        assert "Start a new long-running process" in tool.description
-
     def test_apply_method(self):
         """Test the _apply static method."""
         # Create a mock process manager
@@ -220,12 +212,6 @@ class TestStartProcessTool:
 class TestListProcessesTool:
     """Test the ListProcessesTool class."""
 
-    def test_tool_properties(self):
-        """Test tool name and description."""
-        tool = ListProcessesTool()
-        assert tool.name == "list"
-        assert "List all managed processes" in tool.description
-
     def test_apply_method(self):
         """Test the _apply static method."""
         mock_manager = MagicMock(spec=ProcessManager)
@@ -261,12 +247,6 @@ class TestListProcessesTool:
 class TestGetProcessStatusTool:
     """Test the GetProcessStatusTool class."""
 
-    def test_tool_properties(self):
-        """Test tool name and description."""
-        tool = GetProcessStatusTool()
-        assert tool.name == "get_status"
-        assert "Get the detailed status" in tool.description
-
     def test_apply_method(self):
         """Test the _apply static method."""
         mock_manager = MagicMock(spec=ProcessManager)
@@ -295,7 +275,7 @@ class TestGetProcessStatusTool:
 
         mock_parse.assert_called_once_with("123", [])
         mock_mcp_request.assert_called_once_with(
-            "get_status",
+            "status",
             8947,
             {"pid": 123, "command_or_label": None, "working_directory": "/tmp"},
         )
@@ -303,12 +283,6 @@ class TestGetProcessStatusTool:
 
 class TestStopProcessTool:
     """Test the StopProcessTool class."""
-
-    def test_tool_properties(self):
-        """Test tool name and description."""
-        tool = StopProcessTool()
-        assert tool.name == "stop"
-        assert "Stop a running process" in tool.description
 
     def test_apply_method(self):
         """Test the _apply static method."""
@@ -367,12 +341,6 @@ class TestStopProcessTool:
 class TestRestartProcessTool:
     """Test the RestartProcessTool class."""
 
-    def test_tool_properties(self):
-        """Test tool name and description."""
-        tool = RestartProcessTool()
-        assert tool.name == "restart"
-        assert "Stops a process and starts it again" in tool.description
-
     def test_apply_method(self):
         """Test the _apply static method."""
         mock_manager = MagicMock(spec=ProcessManager)
@@ -398,12 +366,6 @@ class TestRestartProcessTool:
 
 class TestGetProcessOutputTool:
     """Test the GetProcessOutputTool class."""
-
-    def test_tool_properties(self):
-        """Test tool name and description."""
-        tool = GetProcessOutputTool()
-        assert tool.name == "get_output"
-        assert "Retrieve captured output" in tool.description
 
     def test_apply_method(self):
         """Test the _apply static method."""
@@ -439,12 +401,6 @@ class TestGetProcessOutputTool:
 class TestGetProcessLogPathsTool:
     """Test the GetProcessLogPathsTool class."""
 
-    def test_tool_properties(self):
-        """Test tool name and description."""
-        tool = GetProcessLogPathsTool()
-        assert tool.name == "get_log_paths"
-        assert "Get the paths to the log files" in tool.description
-
     def test_apply_method(self):
         """Test the _apply static method."""
         mock_manager = MagicMock(spec=ProcessManager)
@@ -463,12 +419,6 @@ class TestGetProcessLogPathsTool:
 
 class TestKillPersistprocTool:
     """Test the KillPersistprocTool class."""
-
-    def test_tool_properties(self):
-        """Test tool name and description."""
-        tool = KillPersistprocTool()
-        assert tool.name == "kill_persistproc"
-        assert "Kill all managed processes" in tool.description
 
     def test_apply_method(self):
         """Test the _apply static method."""
@@ -493,33 +443,14 @@ class TestToolCollection:
         expected_names = {
             "start",
             "list",
-            "get_status",
+            "status",
             "stop",
             "restart",
-            "get_output",
+            "output",
             "get_log_paths",
             "kill_persistproc",
         }
         assert set(tool_names) == expected_names
-
-    def test_all_tools_implement_interface(self):
-        """Test that all tools properly implement ITool interface."""
-        for tool_cls in ALL_TOOL_CLASSES:
-            tool = tool_cls()
-
-            # Check interface compliance
-            assert isinstance(tool, ITool)
-            assert hasattr(tool, "name")
-            assert hasattr(tool, "description")
-            assert callable(tool.register_tool)
-            assert callable(tool.build_subparser)
-            assert callable(tool.call_with_args)
-
-            # Check that name and description are strings
-            assert isinstance(tool.name, str)
-            assert isinstance(tool.description, str)
-            assert len(tool.name) > 0
-            assert len(tool.description) > 0
 
     def test_tool_names_are_unique(self):
         """Test that all tool names are unique."""

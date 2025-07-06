@@ -7,6 +7,7 @@ __all__ = [
     "StartProcessResult",
     "StopProcessResult",
     "ProcessInfo",
+    "KillPersistprocResult",
     "ListProcessesResult",
     "ProcessStatusResult",
     "ProcessOutputResult",
@@ -92,6 +93,12 @@ class RestartProcessResult:
     """
 
     pid: int | None = None
+    error: str | None = None
+
+
+@dataclass
+class KillPersistprocResult:
+    pid: int
     error: str | None = None
 
 

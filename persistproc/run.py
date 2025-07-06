@@ -98,11 +98,13 @@ def _tail_file(
     buffer_mode: threading.Event | None = None,
     buffer: list[str] | None = None,
     buffer_lock: threading.Lock | None = None,
+    from_beginning: bool = False,
 ) -> None:  # noqa: D401 – helper
     """Continuously print new lines appended to *path* until *stop_evt* is set.
 
     If *raw* is *False*, ISO timestamps are stripped and `[SYSTEM]` lines skipped.
     If *buffer_mode* is set, lines are appended to the buffer instead of printed.
+    If *from_beginning* is *True*, start reading from the beginning of the file.
     """
 
     def _maybe_transform(line: str) -> str | None:  # noqa: D401 – helper
@@ -114,7 +116,10 @@ def _tail_file(
 
     try:
         with path.open("r", encoding="utf-8") as fh:
-            fh.seek(0, os.SEEK_END)
+            if not from_beginning:
+                fh.seek(0, os.SEEK_END)
+            else:
+                logger.debug("Starting tail from beginning of file %s", path)
             while not stop_evt.is_set():
                 line = fh.readline()
                 if line:
@@ -225,15 +230,11 @@ async def _start_or_get_process_via_mcp(
     )
 
 
-def _stop_process_via_mcp(port: int, pid: int) -> None:  # noqa: D401 – helper
-    """Best-effort attempt to stop *pid* via MCP (synchronous wrapper)."""
-
-    async def _do_stop() -> None:  # noqa: D401 – inner helper
+async def _stop_process_via_mcp(port: int, pid: int) -> None:  # noqa: D401 – helper
+    """Best-effort attempt to stop *pid* via MCP."""
+    try:
         async with make_client(port) as client:
             await client.call_tool("stop", {"pid": pid})
-
-    try:
-        asyncio.run(_do_stop())
     except Exception as exc:  # pragma: no cover – soft failure
         logger.warning("Failed to stop process %s via MCP: %s", pid, exc)
 
@@ -247,15 +248,18 @@ async def _async_get_process_status(port: str, pid: int) -> str | None:  # noqa:
     """Return status string for *pid* or *None* if request fails."""
 
     async with make_client(port) as client:
-        res = await client.call_tool("get_status", {"pid": pid})
+        res = await client.call_tool("status", {"pid": pid})
         info = json.loads(res[0].text)
         return info.get("status")
 
 
-def _get_process_status(port: str, pid: int) -> str | None:  # noqa: D401 – sync shell
+async def _get_process_status(port: str, pid: int) -> str | None:  # noqa: D401
     try:
-        return asyncio.run(_async_get_process_status(port, pid))
-    except Exception:  # pragma: no cover – swallow
+        result = await _async_get_process_status(port, pid)
+        logger.debug("_get_process_status(pid=%s) -> %s", pid, result)
+        return result
+    except Exception as exc:  # pragma: no cover – swallow
+        logger.warning("_get_process_status(pid=%s) failed: %s", pid, exc)
         return None
 
 
@@ -284,12 +288,12 @@ async def _async_find_restarted_process(
     return None, None
 
 
-def _find_restarted_process(
+async def _find_restarted_process(
     port: str, cmd_tokens: list[str], working_directory: str, old_pid: int
 ) -> tuple[int | None, Path | None]:  # noqa: D401
     try:
-        return asyncio.run(
-            _async_find_restarted_process(port, cmd_tokens, working_directory, old_pid)
+        return await _async_find_restarted_process(
+            port, cmd_tokens, working_directory, old_pid
         )
     except Exception:  # pragma: no cover – swallow
         return None, None
@@ -334,22 +338,41 @@ def run(
         TCP port of the persistproc server.  If *None*, falls back to the
         ``PERSISTPROC_PORT`` environment variable (or 8947 if unset).
     """
+    asyncio.run(
+        _run(
+            command, args, fresh=fresh, on_exit=on_exit, raw=raw, port=port, label=label
+        )
+    )
 
+
+async def _run(
+    command: str,
+    args: Sequence[str],
+    *,
+    fresh: bool = False,
+    on_exit: str = "ask",  # ask|stop|detach
+    raw: bool = False,
+    port: int | None = None,
+    label: str | None = None,
+) -> None:  # noqa: D401
+    """Async implementation of run functionality."""
     cmd_tokens = [command, *args]
     cmd_str = " ".join(cmd_tokens)
     cwd = os.getcwd()
 
     # ------------------------------------------------------------------
-    # Robust Ctrl+C handling – turn any SIGINT into KeyboardInterrupt even
-    # when we are blocked inside ``asyncio.run``.  Restore the previous
-    # handler before we leave this function (all exit paths).
+    # Set up custom SIGINT handler using the event loop
     # ------------------------------------------------------------------
 
-    def _raise_keyboard_interrupt(signum, frame):  # noqa: D401 – small handler
-        raise KeyboardInterrupt
+    shutdown_event = asyncio.Event()
 
-    old_sigint_handler = signal.getsignal(signal.SIGINT)
-    signal.signal(signal.SIGINT, _raise_keyboard_interrupt)
+    def handle_sigint():
+        logger.debug("SIGINT received, setting shutdown event")
+        shutdown_event.set()
+
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, handle_sigint)
+    logger.debug("SIGINT handler installed via event loop")
 
     logger.debug("run(command=%s) starting", cmd_str)
 
@@ -358,8 +381,8 @@ def run(
     # ------------------------------------------------------------------
 
     try:
-        pid, combined_path = asyncio.run(
-            _start_or_get_process_via_mcp(port, cmd_tokens, fresh, cwd, label)
+        pid, combined_path = await _start_or_get_process_via_mcp(
+            port, cmd_tokens, fresh, cwd, label
         )
     except (ConnectionError, OSError) as exc:
         CLI_LOGGER.error(
@@ -413,10 +436,18 @@ def run(
     output_buffer: list[str] = []
     buffer_lock = threading.Lock()
 
-    def _start_tail_thread(p: Path):  # noqa: D401 – helper
+    def _start_tail_thread(p: Path, from_beginning: bool = False):  # noqa: D401 – helper
         t = threading.Thread(
             target=_tail_file,
-            args=(p, stop_evt, raw, buffer_mode, output_buffer, buffer_lock),
+            args=(
+                p,
+                stop_evt,
+                raw,
+                buffer_mode,
+                output_buffer,
+                buffer_lock,
+                from_beginning,
+            ),
             daemon=True,
         )
         t.start()
@@ -428,23 +459,43 @@ def run(
 
     try:
         while True:
-            tail_thread.join(timeout=0.3)
+            # Check for shutdown signal
+            if shutdown_event.is_set():
+                logger.debug("Shutdown event detected, handling graceful exit")
+                break
+
+            # Use asyncio.sleep instead of blocking tail_thread.join
+            await asyncio.sleep(0.3)
+            logger.debug(
+                "Main monitoring loop iteration, tail_thread.is_alive=%s",
+                tail_thread.is_alive(),
+            )
 
             # Periodically check process status.
             if time.time() - last_status_check >= 1.0:
                 last_status_check = time.time()
+                logger.debug("Performing periodic status check for PID %s", pid)
                 try:
-                    status_res = _get_process_status(port, pid)
+                    status_res = await _get_process_status(port, pid)
+                    logger.debug("Status check result for PID %s: %s", pid, status_res)
                 except Exception as exc:  # pragma: no cover – report but continue
                     logger.debug("Status poll failed: %s", exc)
                     status_res = None
 
                 if status_res != "running":
+                    logger.info(
+                        "Process PID %s is no longer running (status=%s), looking for replacement",
+                        pid,
+                        status_res,
+                    )
                     # Process exited – look for replacement.
-                    new_pid, new_combined = _find_restarted_process(
+                    new_pid, new_combined = await _find_restarted_process(
                         port, cmd_tokens, cwd, pid
                     )
                     if new_pid is None:
+                        logger.info(
+                            "No replacement process found, exiting monitoring loop"
+                        )
                         break  # no restart – we're done
 
                     # Restart detected → switch tail.
@@ -461,12 +512,19 @@ def run(
                     tail_thread.join(timeout=1.0)
 
                     stop_evt.clear()
-                    tail_thread = _start_tail_thread(combined_path)
+                    tail_thread = _start_tail_thread(combined_path, from_beginning=True)
 
             if not tail_thread.is_alive():
                 # Tail finished naturally (e.g., log file closed) – exit loop.
+                logger.info("Tail thread died, exiting monitoring loop")
                 break
-    except KeyboardInterrupt:
+    finally:
+        # Always clean up on exit
+        stop_evt.set()
+        tail_thread.join(timeout=1.0)
+
+    # Handle shutdown signal if it was set
+    if shutdown_event.is_set():
         logger.debug("Ctrl+C received – deciding action (on_exit=%s)", on_exit)
 
         # Start buffering output during the prompt
@@ -505,7 +563,7 @@ def run(
                 return False
 
         if _should_stop():
-            logger.info("Stopping process PID %s", pid)
+            logger.info("User chose to stop process PID %s", pid)
 
             # Print any buffered output from during the prompt
             with buffer_lock:
@@ -519,56 +577,70 @@ def run(
 
             # Send stop signal
             t0 = time.time()
-            _stop_process_via_mcp(port, pid)
+            logger.debug("Sending stop signal to PID %s", pid)
+            await _stop_process_via_mcp(port, pid)
             logger.debug("stop MCP request completed in %.3fs", time.time() - t0)
 
             # Monitor until process exits, continuing to tail output
             deadline = time.time() + 6.0  # <= monitor tick + grace
             last_status_check = time.time()
+            logger.debug(
+                "Starting shutdown monitoring loop for PID %s, deadline in %.1f seconds",
+                pid,
+                6.0,
+            )
 
-            try:
-                while time.time() < deadline:
-                    tail_thread.join(timeout=0.3)
+            while time.time() < deadline:
+                # Use asyncio.sleep instead of blocking tail_thread.join
+                await asyncio.sleep(0.3)
+                time_left = deadline - time.time()
+                logger.debug(
+                    "Shutdown monitoring loop iteration, time_left=%.1f, tail_thread.is_alive=%s",
+                    time_left,
+                    tail_thread.is_alive(),
+                )
 
-                    # Periodically check process status
-                    if time.time() - last_status_check >= 1.0:
-                        last_status_check = time.time()
-                        try:
-                            status_after = _get_process_status(port, pid)
-                            logger.debug(
-                                "Status check during shutdown: %s", status_after
+                # Periodically check process status
+                if time.time() - last_status_check >= 1.0:
+                    last_status_check = time.time()
+                    logger.debug("Performing shutdown status check for PID %s", pid)
+                    try:
+                        status_after = await _get_process_status(port, pid)
+                        logger.debug("Status check during shutdown: %s", status_after)
+                        if status_after != "running":
+                            logger.info(
+                                "Process PID %s stopped during shutdown monitoring",
+                                pid,
                             )
-                            if status_after != "running":
-                                break
-                        except (
-                            Exception
-                        ) as exc:  # pragma: no cover – report but continue
-                            logger.debug("Status poll failed during shutdown: %s", exc)
+                            break
+                    except Exception as exc:  # pragma: no cover – report but continue
+                        logger.debug("Status poll failed during shutdown: %s", exc)
 
-                    if not tail_thread.is_alive():
-                        # Tail finished naturally (e.g., log file closed) – exit loop
-                        break
+                if not tail_thread.is_alive():
+                    # Tail finished naturally (e.g., log file closed) – exit loop
+                    logger.debug("Tail thread died during shutdown monitoring")
+                    break
 
-                # Give a brief moment for any final output to be captured
-                time.sleep(0.5)
-
-            except KeyboardInterrupt:
-                # User hit Ctrl+C again while waiting for shutdown
-                logger.info("Second Ctrl+C received - forcing immediate exit")
+            # Give a brief moment for any final output to be captured
+            logger.debug(
+                "Shutdown monitoring complete, sleeping briefly for final output"
+            )
+            time.sleep(0.5)
 
             # Final cleanup
+            logger.debug("Stopping tail thread and performing final cleanup")
             stop_evt.set()
             tail_thread.join(timeout=1.0)
 
             # Final status check for logging
-            final_status = _get_process_status(port, pid)
+            final_status = await _get_process_status(port, pid)
             logger.debug("Final status after stop wait: %s", final_status)
 
-            # Exit immediately: cleanup done, restore SIGINT handler first.
-            signal.signal(signal.SIGINT, old_sigint_handler)
+            # Exit immediately: cleanup done.
+            logger.debug("Exiting after stop")
             return
         else:
-            logger.info("Detaching – process PID %s left running", pid)
+            logger.info("User chose to detach – process PID %s left running", pid)
 
             # Clear buffer and resume normal tailing
             with buffer_lock:
@@ -579,62 +651,73 @@ def run(
 
             # Continue with normal monitoring loop
             last_status_check = time.time()
+            logger.debug("Resuming normal monitoring loop after detach choice")
 
-            try:
-                while True:
-                    tail_thread.join(timeout=0.3)
+            while True:
+                # Use asyncio.sleep instead of blocking tail_thread.join
+                await asyncio.sleep(0.3)
+                logger.debug(
+                    "Detach monitoring loop iteration, tail_thread.is_alive=%s",
+                    tail_thread.is_alive(),
+                )
 
-                    # Periodically check process status.
-                    if time.time() - last_status_check >= 1.0:
-                        last_status_check = time.time()
-                        try:
-                            status_res = _get_process_status(port, pid)
-                        except (
-                            Exception
-                        ) as exc:  # pragma: no cover – report but continue
-                            logger.debug("Status poll failed: %s", exc)
-                            status_res = None
+                # Periodically check process status.
+                if time.time() - last_status_check >= 1.0:
+                    last_status_check = time.time()
+                    logger.debug(
+                        "Performing periodic status check for PID %s (detach mode)",
+                        pid,
+                    )
+                    try:
+                        status_res = await _get_process_status(port, pid)
+                        logger.debug(
+                            "Status check result for PID %s (detach mode): %s",
+                            pid,
+                            status_res,
+                        )
+                    except Exception as exc:  # pragma: no cover – report but continue
+                        logger.debug("Status poll failed: %s", exc)
+                        status_res = None
 
-                        if status_res != "running":
-                            # Process exited – look for replacement.
-                            new_pid, new_combined = _find_restarted_process(
-                                port, cmd_tokens, cwd, pid
-                            )
-                            if new_pid is None:
-                                break  # no restart – we're done
-
-                            # Restart detected → switch tail.
+                    if status_res != "running":
+                        logger.info(
+                            "Process PID %s is no longer running (detach mode, status=%s), looking for replacement",
+                            pid,
+                            status_res,
+                        )
+                        # Process exited – look for replacement.
+                        new_pid, new_combined = await _find_restarted_process(
+                            port, cmd_tokens, cwd, pid
+                        )
+                        if new_pid is None:
                             logger.info(
-                                "Process was restarted (old PID %s → new PID %s). Switching log tail.",
-                                pid,
-                                new_pid,
+                                "No replacement process found (detach mode), exiting monitoring loop"
                             )
+                            break  # no restart – we're done
 
-                            pid = new_pid
-                            combined_path = new_combined
+                        # Restart detected → switch tail.
+                        logger.info(
+                            "Process was restarted (old PID %s → new PID %s). Switching log tail.",
+                            pid,
+                            new_pid,
+                        )
 
-                            stop_evt.set()
-                            tail_thread.join(timeout=1.0)
+                        pid = new_pid
+                        combined_path = new_combined
 
-                            stop_evt.clear()
-                            tail_thread = _start_tail_thread(combined_path)
+                        stop_evt.set()
+                        tail_thread.join(timeout=1.0)
 
-                    if not tail_thread.is_alive():
-                        # Tail finished naturally (e.g., log file closed) – exit loop.
-                        break
-            except KeyboardInterrupt:
-                # User pressed Ctrl+C again - exit cleanly
-                pass
+                        stop_evt.clear()
+                        tail_thread = _start_tail_thread(
+                            combined_path, from_beginning=True
+                        )
 
-        # Exit immediately: cleanup done, restore SIGINT handler first.
-        signal.signal(signal.SIGINT, old_sigint_handler)
+                if not tail_thread.is_alive():
+                    # Tail finished naturally (e.g., log file closed) – exit loop.
+                    break
+
+        # Exit immediately: cleanup done.
         return
 
-    finally:
-        stop_evt.set()
-        tail_thread.join(timeout=1.0)
-
     logger.debug("run(command=%s) finished", cmd_str)
-
-    # Restore previous SIGINT handler on normal exit.
-    signal.signal(signal.SIGINT, old_sigint_handler)

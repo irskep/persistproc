@@ -221,7 +221,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
         if snake not in subparsers.choices:
             p_tool = subparsers.add_parser(
                 snake,
-                help=tool.description,
+                help=tool.cli_description,
                 parents=[common_parser],
                 aliases=[kebab] if kebab != snake else [],
             )
