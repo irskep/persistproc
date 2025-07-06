@@ -4,19 +4,21 @@ import asyncio
 import json
 import logging
 
+from fastmcp.exceptions import ToolError
+
 from .client import make_client
 from .logging_utils import CLI_LOGGER
-from .text_formatters import format_result
 from .process_types import (
+    KillPersistprocResult,
+    ListProcessesResult,
+    ProcessLogPathsResult,
+    ProcessOutputResult,
+    ProcessStatusResult,
+    RestartProcessResult,
     StartProcessResult,
     StopProcessResult,
-    ProcessStatusResult,
-    ListProcessesResult,
-    ProcessOutputResult,
-    ProcessLogPathsResult,
-    RestartProcessResult,
-    KillPersistprocResult,
 )
+from .text_formatters import format_result
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,8 @@ def execute_mcp_request(
             "Cannot connect to persistproc server on port %d. Start it with 'persistproc serve'.",
             port,
         )
+    except ToolError as e:
+        CLI_LOGGER.error(e)
     except Exception as e:
         # Check if this is an MCP tool error response
         error_str = str(e)
