@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "persistproc"
-version = "0.1.0"
+version = "0.1.1"
 description = "A shared process layer for the modern, multi-agent development workflow (Unix-only)."
 readme = "README.md"
 requires-python = ">=3.10"
