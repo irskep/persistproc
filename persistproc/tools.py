@@ -16,6 +16,7 @@ from persistproc.logging_utils import CLI_LOGGER
 from persistproc.process_manager import ProcessManager
 
 from .process_types import (
+    KillPersistprocResult,
     ListProcessesResult,
     ProcessLogPathsResult,
     ProcessOutputResult,
@@ -126,8 +127,14 @@ class ITool(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def description(self) -> str:
-        """The description of the tool."""
+    def cli_description(self) -> str:
+        """The description of the tool for a human user on the command line."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def mcp_description(self) -> str:
+        """The description of the tool for an MCP client with an LLM agent user."""
         ...
 
     @abc.abstractmethod
@@ -147,10 +154,9 @@ class ITool(abc.ABC):
 
 
 class StartProcessTool(ITool):
-    """Tool to start a new long-running process."""
-
     name = "start"
-    description = "Start a new long-running process. REQUIRED if the process is expected to never terminate. PROHIBITED if the process is short-lived."
+    cli_description = "Start a new process"
+    mcp_description = "Start a new long-running process. REQUIRED if the process is expected to never terminate. PROHIBITED if the process is short-lived."
 
     @staticmethod
     def _apply(
@@ -182,7 +188,7 @@ class StartProcessTool(ITool):
 
         mcp.add_tool(
             FunctionTool.from_function(
-                start, name=self.name, description=self.description
+                start, name=self.name, description=self.mcp_description
             )
         )
 
@@ -217,10 +223,9 @@ class StartProcessTool(ITool):
 
 
 class ListProcessesTool(ITool):
-    """Tool to list all managed processes."""
-
     name = "list"
-    description = "List all managed processes and their status."
+    cli_description = "List all managed processes and their status"
+    mcp_description = "List all managed processes and their status"
 
     @staticmethod
     def _apply(process_manager: ProcessManager) -> ListProcessesResult:
@@ -232,7 +237,11 @@ class ListProcessesTool(ITool):
         def list() -> ListProcessesResult:
             return self._apply(process_manager)
 
-        mcp.add_tool(FunctionTool.from_function(list, name=self.name))
+        mcp.add_tool(
+            FunctionTool.from_function(
+                list, name=self.name, description=self.mcp_description
+            )
+        )
 
     def build_subparser(self, parser: ArgumentParser) -> None:
         pass
@@ -242,10 +251,9 @@ class ListProcessesTool(ITool):
 
 
 class GetProcessStatusTool(ITool):
-    """Tool to get the status of a specific process."""
-
     name = "get_status"
-    description = "Get the detailed status of a specific process."
+    cli_description = "Get the detailed status of a specific process"
+    mcp_description = "Get the detailed information about a specific process, including its PID, command, working directory, and status."
 
     @staticmethod
     def _apply(
@@ -276,7 +284,11 @@ class GetProcessStatusTool(ITool):
                 process_manager, pid, command_or_label, working_directory
             )
 
-        mcp.add_tool(FunctionTool.from_function(get_status, name=self.name))
+        mcp.add_tool(
+            FunctionTool.from_function(
+                get_status, name=self.name, description=self.mcp_description
+            )
+        )
 
     def build_subparser(self, parser: ArgumentParser) -> None:
         parser.add_argument(
@@ -304,10 +316,9 @@ class GetProcessStatusTool(ITool):
 
 
 class StopProcessTool(ITool):
-    """Tool to stop a running process."""
-
     name = "stop"
-    description = "Stop a running process."
+    cli_description = "Stop a running process"
+    mcp_description = "Stop a running process. Blocks until the process is stopped."
 
     @staticmethod
     def _apply(
@@ -346,7 +357,11 @@ class StopProcessTool(ITool):
                 process_manager, pid, command_or_label, working_directory, force, label
             )
 
-        mcp.add_tool(FunctionTool.from_function(stop, name=self.name))
+        mcp.add_tool(
+            FunctionTool.from_function(
+                stop, name=self.name, description=self.mcp_description
+            )
+        )
 
     def build_subparser(self, parser: ArgumentParser) -> None:
         parser.add_argument(
@@ -378,10 +393,9 @@ class StopProcessTool(ITool):
 
 
 class RestartProcessTool(ITool):
-    """Tool to restart a running process."""
-
     name = "restart"
-    description = "Stops a process and starts it again with the same parameters."
+    cli_description = "Stops a process and starts it again with the same arguments and working directory"
+    mcp_description = "Stops a process and starts it again with the same arguments and working directory"
 
     @staticmethod
     def _apply(
@@ -416,7 +430,11 @@ class RestartProcessTool(ITool):
                 process_manager, pid, command_or_label, working_directory, label
             )
 
-        mcp.add_tool(FunctionTool.from_function(restart, name=self.name))
+        mcp.add_tool(
+            FunctionTool.from_function(
+                restart, name=self.name, description=self.mcp_description
+            )
+        )
 
     def build_subparser(self, parser: ArgumentParser) -> None:
         parser.add_argument(
@@ -446,10 +464,9 @@ class RestartProcessTool(ITool):
 
 
 class GetProcessOutputTool(ITool):
-    """Tool to retrieve captured output from a process."""
-
     name = "get_output"
-    description = "Retrieve captured output from a process."
+    cli_description = "Retrieve captured output from a process"
+    mcp_description = "Retrieve captured output from a process. If no arguments are provided, the last 100 lines of the combined stdout+stderr output are returned."
 
     @staticmethod
     def _apply(
@@ -502,7 +519,11 @@ class GetProcessOutputTool(ITool):
                 working_directory,
             )
 
-        mcp.add_tool(FunctionTool.from_function(get_output, name=self.name))
+        mcp.add_tool(
+            FunctionTool.from_function(
+                get_output, name=self.name, description=self.mcp_description
+            )
+        )
 
     def build_subparser(self, parser: ArgumentParser) -> None:
         parser.add_argument(
@@ -548,10 +569,9 @@ class GetProcessOutputTool(ITool):
 
 
 class GetProcessLogPathsTool(ITool):
-    """Tool to get the log file paths for a process."""
-
     name = "get_log_paths"
-    description = "Get the paths to the log files for a specific process."
+    cli_description = "Get the paths to the log files for a specific process"
+    mcp_description = "Get the paths on the filesystem to the log files for a specific process. Usually you want get_output instead."
 
     @staticmethod
     def _apply(
@@ -582,7 +602,11 @@ class GetProcessLogPathsTool(ITool):
                 process_manager, pid, command_or_label, working_directory
             )
 
-        mcp.add_tool(FunctionTool.from_function(get_log_paths, name=self.name))
+        mcp.add_tool(
+            FunctionTool.from_function(
+                get_log_paths, name=self.name, description=self.mcp_description
+            )
+        )
 
     def build_subparser(self, parser: ArgumentParser) -> None:
         parser.add_argument(
@@ -611,24 +635,28 @@ class GetProcessLogPathsTool(ITool):
 
 
 class KillPersistprocTool(ITool):
-    """Tool to kill all managed processes and get the server's PID."""
-
     name = "kill_persistproc"
-    description = (
-        "Kill all managed processes and get the PID of the persistproc server."
+    cli_description = (
+        "Kill all managed processes and get the PID of the persistproc server"
+    )
+    mcp_description = (
+        "Kill all managed processes and get the PID of the persistproc server"
     )
 
     @staticmethod
-    def _apply(process_manager: ProcessManager) -> dict[str, int]:
-        """Kill all managed processes and get the PID of the persistproc server."""
+    def _apply(process_manager: ProcessManager) -> KillPersistprocResult:
         logger.debug("kill_persistproc called")
         return process_manager.kill_persistproc()
 
     def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
-        def kill_persistproc() -> dict[str, int]:
+        def kill_persistproc() -> KillPersistprocResult:
             return self._apply(process_manager)
 
-        mcp.add_tool(FunctionTool.from_function(kill_persistproc, name=self.name))
+        mcp.add_tool(
+            FunctionTool.from_function(
+                kill_persistproc, name=self.name, description=self.mcp_description
+            )
+        )
 
     def build_subparser(self, parser: ArgumentParser) -> None:
         pass

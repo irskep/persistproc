@@ -95,6 +95,12 @@ class RestartProcessResult:
     error: str | None = None
 
 
+@dataclass
+class KillPersistprocResult:
+    pid: int
+    error: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Make dataclass types globally visible for Pydantic/fastmcp.
 # ---------------------------------------------------------------------------
