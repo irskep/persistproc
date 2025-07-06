@@ -15,19 +15,16 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 # Change to the script's directory to ensure relative paths work correctly for setup
 cd "$SCRIPT_DIR"
 
-# Create a virtual environment using uv if it doesn't exist
-if [ ! -d ".venv" ]; then
-  echo "Creating virtual environment..."
-  uv venv
+# Use mise to sync dependencies if available, otherwise fall back to uv directly
+if command -v mise &> /dev/null; then
+  mise deps:sync
+else
+  # Fallback: use uv directly
+  uv sync --extra docs --extra dev
 fi
-
-# Activate the virtual environment
-source .venv/bin/activate
-
-echo "Installing dependencies..."
-uv pip install -e ".[dev]"
 
 # Change back to the original directory before running the user's command
 cd "$ORIGINAL_CWD"
 
-persistproc "$@"
+# Use uv run to execute persistproc in the project environment  
+uv run --module persistproc "$@"
