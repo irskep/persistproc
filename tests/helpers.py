@@ -30,7 +30,7 @@ def start_persistproc() -> subprocess.Popen[str]:
     """Start persistproc server in the background and wait until ready."""
     cmd = ["python", "-m", "persistproc", "-vv", "serve"]
 
-    # Cross-platform process creation
+    # Cross-platform process creation with enhanced Windows isolation
     kwargs = {
         "text": True,
         "stdout": subprocess.PIPE,
@@ -38,23 +38,43 @@ def start_persistproc() -> subprocess.Popen[str]:
     }
 
     if os.name == "nt":
-        # Windows: Use CREATE_NEW_PROCESS_GROUP
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        # Windows: Enhanced isolation to prevent pytest-xdist worker crashes
+        kwargs["creationflags"] = (
+            subprocess.CREATE_NEW_PROCESS_GROUP
+            | subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NEW_CONSOLE
+        )
+        # Additional Windows isolation
+        kwargs["close_fds"] = True
     else:
         # Unix-like: Use start_new_session
         kwargs["start_new_session"] = True
 
     proc = subprocess.Popen(cmd, **kwargs)
 
-    # Wait for server readiness line.
+    # Wait for server readiness line with timeout to prevent hangs
+    timeout_start = time.time()
+    timeout_duration = 30.0  # 30 second timeout
+
     while True:
+        if time.time() - timeout_start > timeout_duration:
+            proc.terminate()
+            raise RuntimeError(
+                f"persistproc server failed to start within {timeout_duration}s"
+            )
+
+        # Check if process died
+        if proc.poll() is not None:
+            stdout, stderr = proc.communicate()
+            raise RuntimeError(
+                f"persistproc server exited early with code {proc.returncode}: {stdout}"
+            )
+
         line = proc.stdout.readline()
         if not line:
-            # log the line so tests can see it
             time.sleep(0.05)
             continue
         if "Uvicorn running on" in line:
-            # log the line so tests can see it
             print(line)
             time.sleep(1)
             break
@@ -150,7 +170,7 @@ def start_run(cmd_tokens: list[str], *, on_exit: str = "stop") -> subprocess.Pop
         *cmd_tokens,
     ]
 
-    # Cross-platform process creation
+    # Cross-platform process creation with enhanced Windows isolation
     kwargs = {
         "text": True,
         "stdout": subprocess.PIPE,
@@ -158,8 +178,14 @@ def start_run(cmd_tokens: list[str], *, on_exit: str = "stop") -> subprocess.Pop
     }
 
     if os.name == "nt":
-        # Windows: Use CREATE_NEW_PROCESS_GROUP
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        # Windows: Enhanced isolation to prevent pytest-xdist worker crashes
+        kwargs["creationflags"] = (
+            subprocess.CREATE_NEW_PROCESS_GROUP
+            | subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NEW_CONSOLE
+        )
+        # Additional Windows isolation
+        kwargs["close_fds"] = True
     else:
         # Unix-like: Use start_new_session
         kwargs["start_new_session"] = True
