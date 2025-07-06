@@ -5,7 +5,7 @@ A shared process layer for multi-agent development workflows
 [![PyPI version](https://badge.fury.io/py/persistproc.svg)](https://badge.fury.io/py/persistproc)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-![Test Coverage](coverage.svg)
+
 ---
 
 
@@ -36,6 +36,12 @@ graph TB
     style User fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
     style Agent fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
 ```
+
+> [!NOTE]
+> **Why not just use Cursor and let the agent open a terminal?**
+>
+> 1. Not everyone likes using the terminal in Cursor/VSCode. Engineers have many different workflows.
+> 2. _Only_ Cursor's agents can see the process, not Claude Code, Gemini CLI, etc.
 
 ### Example use case: complex web development
 
@@ -73,10 +79,13 @@ graph TB
 ```
 
 > [!NOTE]
-> **Why not just use Cursor and let the agent open a terminal?**
+> **What if my processes are started by another system?**
 >
-> 1. Not everyone likes using the terminal in Cursor/VSCode. Engineers have many different workflows.
-> 2. _Only_ Cursor's agents can see the process, not Claude Code, Gemini CLI, etc.
+> Then your best bet is to write log files to a predictable location and tell the agent where they are,
+> rather than trying to use persistproc. Or, you can follow [this issue on GitHub](https://github.com/irskep/persistproc-mcp/issues/25).
+>
+> Currently, persistproc is most useful when you want your agent to be able to _manage_ processes, not
+> just see their output.
 
 ## Available Tools
 

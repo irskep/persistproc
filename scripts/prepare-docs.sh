@@ -7,11 +7,19 @@ cp README.md docs/index.md
 # Remove the 'full docs:' link line
 sed -i.bak '/> Full docs:/d' docs/index.md
 
-# Add coverage badge after the MIT license badge
-sed -i.bak '/License: MIT/a\
+# Add coverage badge after the MIT license badge (only if coverage.svg exists)
+if [ -f "docs/coverage.svg" ]; then
+    sed -i.bak '/License: MIT/a\
 ![Test Coverage](coverage.svg)' docs/index.md
+    echo "✅ Coverage badge added"
+else
+    echo "ℹ️  No coverage.svg found, skipping coverage badge"
+fi
 
-# Remove the backup file
-rm docs/index.md.bak
+# Remove the backup file if it exists
+[ -f docs/index.md.bak ] && rm docs/index.md.bak
 
-echo "✅ README.md copied to docs/index.md with 'full docs:' link removed and coverage badge added" 
+# Update the help text in the docs
+python scripts/update_docs_help.py
+
+echo "✅ Help text updated in docs/tools.md" 
