@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import os
 import signal
@@ -21,34 +22,138 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     """Invoke the persistproc CLI synchronously and capture output."""
-    cmd = ["python", "-m", "persistproc", "-vv", *args]
+    cmd = ["uv", "run", "python", "-m", "persistproc", "-vv", *args]
     return subprocess.run(cmd, text=True, capture_output=True, check=False)
 
 
 def start_persistproc() -> subprocess.Popen[str]:
     """Start persistproc server in the background and wait until ready."""
-    cmd = ["python", "-m", "persistproc", "-vv", "serve"]
-    proc = subprocess.Popen(
-        cmd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
+    cmd = ["uv", "run", "python", "-m", "persistproc", "-vv", "serve"]
 
-    # Wait for server readiness line.
+    # First try direct imports on Windows to diagnose startup issues
+    if os.name == "nt":
+        try:
+            # Test direct imports to catch import errors early
+            print("✅ Windows import test passed - persistproc module loaded")
+
+            # Test CLI invocation directly to see specific failure
+            print("Testing CLI command directly...")
+            cli_test = subprocess.run(
+                ["uv", "run", "python", "-m", "persistproc", "-vv", "serve"],
+                capture_output=True,
+                text=True,
+                timeout=5,  # Short timeout since we expect it to fail quickly
+            )
+            if cli_test.returncode != 0:
+                print(f"❌ CLI test failed with code {cli_test.returncode}")
+                print(f"STDOUT: {cli_test.stdout}")
+                print(f"STDERR: {cli_test.stderr}")
+                raise RuntimeError(
+                    f"Windows CLI test failed - server command exits with code {cli_test.returncode}:\n"
+                    f"STDOUT: {cli_test.stdout}\n"
+                    f"STDERR: {cli_test.stderr}\n"
+                    f"This indicates a runtime issue during server startup"
+                )
+            else:
+                print(
+                    "❓ CLI test succeeded unexpectedly - this should have failed quickly"
+                )
+
+        except subprocess.TimeoutExpired:
+            print("⏰ CLI test timed out after 5s - server may be starting normally")
+        except Exception as e:
+            raise RuntimeError(
+                f"Windows diagnostic failed:\n"
+                f"Error: {type(e).__name__}: {e}\n"
+                f"This indicates startup issues on Windows"
+            ) from e
+
+    # Cross-platform process creation
+    kwargs = {
+        "text": True,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+    }
+
+    if os.name == "nt":
+        # Windows: Enhanced isolation to prevent pytest-xdist worker crashes
+        # CREATE_NO_WINDOW prevents console windows from appearing
+        kwargs["creationflags"] = (
+            subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        )
+    else:
+        # Unix-like: Use start_new_session
+        kwargs["start_new_session"] = True
+
+    proc = subprocess.Popen(cmd, **kwargs)
+
+    # Wait for server readiness line with timeout to prevent hangs
+    timeout_start = time.time()
+    timeout_duration = 30.0  # 30 second timeout
+
     while True:
+        if time.time() - timeout_start > timeout_duration:
+            proc.terminate()
+            raise RuntimeError(
+                f"persistproc server failed to start within {timeout_duration}s"
+            )
+
+        # Check if process died
+        if proc.poll() is not None:
+            stdout, _ = proc.communicate()
+            raise RuntimeError(
+                f"persistproc server exited early with code {proc.returncode}:\nOUTPUT: {stdout}"
+            )
+
         line = proc.stdout.readline()
         if not line:
-            # log the line so tests can see it
             time.sleep(0.05)
             continue
         if "Uvicorn running on" in line:
-            # log the line so tests can see it
             print(line)
             time.sleep(1)
             break
     return proc
+
+
+def _is_process_running(pid: int) -> bool:
+    """Check if process is running cross-platform."""
+    try:
+        if os.name == "nt":
+            # Windows: Use tasklist command with proper CSV parsing
+            result = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                return False
+
+            # Parse CSV output properly - tasklist returns header + process lines
+            lines = result.stdout.strip().split("\n")
+            if len(lines) < 2:  # Need header + at least one process line
+                return False
+
+            # Check if any line contains the exact PID in the second column
+            try:
+                reader = csv.reader(lines)
+                next(reader)  # Skip header row
+                for row in reader:
+                    if len(row) >= 2 and row[1].strip() == str(pid):
+                        return True
+            except csv.Error:
+                # Fallback to string search if CSV parsing fails
+                pid_str = f'"{pid}"'  # PID is quoted in CSV output
+                return pid_str in result.stdout
+
+            return False
+        else:
+            # Unix-like: Use os.kill with signal 0
+            os.kill(pid, 0)
+            return True
+    except (OSError, ProcessLookupError):
+        return False
 
 
 def kill_persistproc(proc: subprocess.Popen[str]) -> None:
@@ -57,7 +162,7 @@ def kill_persistproc(proc: subprocess.Popen[str]) -> None:
     result = run_cli("kill-persistproc")
     pid = extract_json(result.stdout)["pid"]
     # loop until given pid is no longer running
-    while os.path.exists(f"/proc/{pid}"):
+    while _is_process_running(pid):
         time.sleep(0.1)
 
 
@@ -89,6 +194,8 @@ def start_run(cmd_tokens: list[str], *, on_exit: str = "stop") -> subprocess.Pop
     """
 
     cli_cmd = [
+        "uv",
+        "run",
         "python",
         "-m",
         "persistproc",
@@ -99,13 +206,25 @@ def start_run(cmd_tokens: list[str], *, on_exit: str = "stop") -> subprocess.Pop
         "--",
         *cmd_tokens,
     ]
-    return subprocess.Popen(
-        cli_cmd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-    )
+
+    # Cross-platform process creation
+    kwargs = {
+        "text": True,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+    }
+
+    if os.name == "nt":
+        # Windows: Enhanced isolation to prevent pytest-xdist worker crashes
+        # CREATE_NO_WINDOW prevents console windows from appearing
+        kwargs["creationflags"] = (
+            subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        )
+    else:
+        # Unix-like: Use start_new_session
+        kwargs["start_new_session"] = True
+
+    return subprocess.Popen(cli_cmd, **kwargs)
 
 
 def stop_run(proc: subprocess.Popen[str], timeout: float = 15.0) -> None:
@@ -113,8 +232,18 @@ def stop_run(proc: subprocess.Popen[str], timeout: float = 15.0) -> None:
     if proc.poll() is not None:
         return
 
-    # Send SIGINT to trigger the graceful shutdown logic in `run.py`.
-    proc.send_signal(signal.SIGINT)
+    # Send interrupt signal cross-platform
+    try:
+        if os.name == "nt":
+            # Windows: Use terminate() directly for reliability
+            # CTRL_C_EVENT is unreliable in CI environments and can affect pytest-xdist workers
+            proc.terminate()
+        else:
+            # Unix-like: Use SIGINT
+            proc.send_signal(signal.SIGINT)
+    except (ProcessLookupError, PermissionError):
+        # Process may have already exited
+        pass
 
     try:
         # Wait for the process to terminate. The `run` command's own logic
@@ -126,8 +255,20 @@ def stop_run(proc: subprocess.Popen[str], timeout: float = 15.0) -> None:
         # If it's still alive, force-kill it.
         print(f"Process {proc.pid} did not exit after {timeout}s, killing.")
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
+            if os.name == "nt":
+                # Windows: Use terminate then kill
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            else:
+                # Unix-like: Use process group kill
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, AttributeError):
             proc.kill()  # Fallback
         finally:
-            proc.wait(timeout=5.0)
+            try:
+                proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                pass  # Process may already be dead

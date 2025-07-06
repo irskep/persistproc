@@ -1,13 +1,36 @@
 # Claude Development Notes
 
+## Dependency Management
+
+**IMPORTANT**: This project uses `mise` for tool management and task automation. To install dependencies, use:
+
+```bash
+mise run deps:sync
+```
+
+This runs `uv sync --extra docs --extra dev` with the correct extras. Do NOT run `uv sync` directly as it may not include required development dependencies.
+
 ## Running Tests
 
-Use `uv run python -m pytest` to run tests.
+Use mise tasks for testing:
+
+```bash
+mise run test          # Run tests with parallel execution
+mise run test:serial   # Run tests serially (for debugging)
+mise run test:cov      # Run tests with coverage report
+```
+
+Tests have a 120-second timeout configured via `pytest-timeout`. This prevents infinite hangs on all platforms including Windows.
 
 ## Linting and Type Checking
 
-- Linting: `uv run ruff check`
-- Formatting: `uv run ruff format`
+Use mise tasks for code quality:
+
+```bash
+mise run lint          # Run linter with auto-fix and format code
+mise run lint:check    # Check linting without fixing
+mise run lint:format   # Format code only
+```
 
 ## Development Guidelines
 

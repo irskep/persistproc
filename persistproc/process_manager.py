@@ -160,8 +160,16 @@ class ProcessManager:  # noqa: D101
         }
 
         try:
+            # Cross-platform command splitting
+            if os.name == "nt":
+                # Windows: Use shlex.split with posix=False for Windows-style parsing
+                cmd_args = shlex.split(command, posix=False)
+            else:
+                # Unix: Use standard shlex.split with POSIX parsing
+                cmd_args = shlex.split(command)
+
             proc = subprocess.Popen(  # noqa: S603 – user command
-                shlex.split(command),
+                cmd_args,
                 cwd=str(working_directory),
                 env={**os.environ, **(environment or {})},
                 stdout=subprocess.PIPE,
@@ -170,6 +178,9 @@ class ProcessManager:  # noqa: D101
                 # Put the child in a different process group so a SIGINT will
                 # kill only the child, not the whole process group.
                 preexec_fn=os.setsid if os.name != "nt" else None,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                if os.name == "nt"
+                else 0,
             )
         except FileNotFoundError as exc:
             return StartProcessResult(
@@ -291,10 +302,10 @@ class ProcessManager:  # noqa: D101
         if ent.status != "running":
             return StopProcessResult(error=f"Process {pid_to_stop} is not running")
 
-        # Send SIGTERM first for graceful shutdown
+        # Send termination signal first for graceful shutdown
         try:
-            self._send_signal(pid_to_stop, signal.SIGTERM)
-            logger.debug("Sent SIGTERM to pid=%s", pid_to_stop)
+            self._send_signal(pid_to_stop, "TERM")
+            logger.debug("Sent termination signal to pid=%s", pid_to_stop)
         except ProcessLookupError:
             # Process already gone
             pass
@@ -302,10 +313,10 @@ class ProcessManager:  # noqa: D101
         timeout = 8.0  # XXX TIMEOUT – graceful wait
         exited = self._wait_for_exit(ent.proc, timeout)
         if not exited and not force:
-            # Escalate to SIGKILL once and wait briefly.
+            # Escalate to kill signal once and wait briefly.
             try:
-                self._send_signal(pid_to_stop, signal.SIGKILL)
-                logger.warning("Escalated to SIGKILL pid=%s", pid_to_stop)
+                self._send_signal(pid_to_stop, "KILL")
+                logger.warning("Escalated to kill signal pid=%s", pid_to_stop)
             except ProcessLookupError:
                 pass  # Process vanished between checks.
 
@@ -642,7 +653,12 @@ class ProcessManager:  # noqa: D101
         def _kill_server():
             time.sleep(0.1)  # Brief delay to allow response to be sent
             logger.info("event=kill_persistproc_terminating_server pid=%s", server_pid)
-            os.kill(server_pid, signal.SIGTERM)
+            try:
+                os.kill(server_pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, OSError) as e:
+                logger.warning(
+                    "Failed to terminate server process %s: %s", server_pid, e
+                )
 
         threading.Thread(target=_kill_server, daemon=True).start()
 
@@ -759,9 +775,117 @@ class ProcessManager:  # noqa: D101
 
     # ------------------ signal helpers ------------------
 
-    @staticmethod
-    def _send_signal(pid: int, sig: signal.Signals) -> None:  # noqa: D401
-        os.killpg(os.getpgid(pid), sig)  # type: ignore[arg-type]
+    def _send_signal(self, pid: int, sig_type: str) -> None:  # noqa: D401
+        """Send termination signal cross-platform."""
+        logger.debug(
+            "_send_signal: pid=%s sig_type=%s platform=%s", pid, sig_type, os.name
+        )
+
+        ent = self._storage.get_process_snapshot(pid)
+        if ent is None:
+            logger.debug("_send_signal: no process entry found for pid %s", pid)
+            self._send_signal_fallback(pid, sig_type)
+            return
+
+        if ent.proc is None:
+            logger.debug(
+                "_send_signal: no subprocess.Popen object for pid %s, using fallback",
+                pid,
+            )
+            self._send_signal_fallback(pid, sig_type)
+            return
+
+        # Use subprocess methods when available (preferred approach)
+        logger.debug("_send_signal: using subprocess method for pid %s", pid)
+        try:
+            if sig_type == "TERM":
+                ent.proc.terminate()
+                logger.debug(
+                    "_send_signal: successfully called terminate() on pid %s", pid
+                )
+            elif sig_type == "KILL":
+                ent.proc.kill()
+                logger.debug("_send_signal: successfully called kill() on pid %s", pid)
+            else:
+                logger.warning(
+                    "_send_signal: unknown signal type %s for pid %s", sig_type, pid
+                )
+        except (ProcessLookupError, PermissionError, OSError) as e:
+            logger.debug(
+                "_send_signal: subprocess method failed for pid %s: %s, trying fallback",
+                pid,
+                e,
+            )
+            self._send_signal_fallback(pid, sig_type)
+
+    def _send_signal_fallback(self, pid: int, sig_type: str) -> None:  # noqa: D401
+        """Fallback signal sending using OS methods."""
+        logger.debug(
+            "_send_signal_fallback: pid=%s sig_type=%s platform=%s",
+            pid,
+            sig_type,
+            os.name,
+        )
+
+        if os.name == "nt":
+            # Windows: use os.kill with SIGTERM (no SIGKILL available)
+            try:
+                if sig_type in ("TERM", "KILL"):
+                    logger.debug(
+                        "_send_signal_fallback: sending SIGTERM to Windows pid %s", pid
+                    )
+                    os.kill(pid, signal.SIGTERM)
+                    logger.debug(
+                        "_send_signal_fallback: successfully sent SIGTERM to Windows pid %s",
+                        pid,
+                    )
+                else:
+                    logger.warning(
+                        "_send_signal_fallback: unknown signal type %s for Windows pid %s",
+                        sig_type,
+                        pid,
+                    )
+            except (ProcessLookupError, PermissionError, OSError) as e:
+                logger.debug(
+                    "_send_signal_fallback: Windows os.kill failed for pid %s: %s",
+                    pid,
+                    e,
+                )
+        else:
+            # Unix-like: use process group signals
+            try:
+                if sig_type == "TERM":
+                    logger.debug(
+                        "_send_signal_fallback: sending SIGTERM to process group for pid %s",
+                        pid,
+                    )
+                    os.killpg(os.getpgid(pid), signal.SIGTERM)
+                    logger.debug(
+                        "_send_signal_fallback: successfully sent SIGTERM to process group for pid %s",
+                        pid,
+                    )
+                elif sig_type == "KILL":
+                    logger.debug(
+                        "_send_signal_fallback: sending SIGKILL to process group for pid %s",
+                        pid,
+                    )
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                    logger.debug(
+                        "_send_signal_fallback: successfully sent SIGKILL to process group for pid %s",
+                        pid,
+                    )
+                else:
+                    logger.warning(
+                        "_send_signal_fallback: unknown signal type %s for Unix pid %s",
+                        sig_type,
+                        pid,
+                    )
+            except (ProcessLookupError, PermissionError, OSError) as e:
+                logger.debug(
+                    "_send_signal_fallback: Unix process group signal failed for pid %s: %s",
+                    pid,
+                    e,
+                )
 
     @staticmethod
     def _wait_for_exit(proc: subprocess.Popen | None, timeout: float) -> bool:  # noqa: D401

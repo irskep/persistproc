@@ -105,7 +105,8 @@ def parse_command_and_args(program: str, args: list[str]) -> tuple[str, list[str
 def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
     """Parse command line arguments and return a CLIAction and metadata."""
     parser = argparse.ArgumentParser(
-        description="Process manager for multi-agent development workflows\n\nDocs: https://steveasleep.com/persistproc"
+        prog="persistproc",
+        description="Process manager for multi-agent development workflows\n\nDocs: https://steveasleep.com/persistproc",
     )
 
     # ------------------------------------------------------------------

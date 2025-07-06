@@ -366,13 +366,26 @@ async def _run(
 
     shutdown_event = asyncio.Event()
 
-    def handle_sigint():
-        logger.debug("SIGINT received, setting shutdown event")
-        shutdown_event.set()
+    # Install signal handler cross-platform
+    if os.name == "nt":
+        # Windows: Use signal.signal (asyncio.add_signal_handler not supported)
+        def handle_sigint(signum, frame):
+            logger.debug("SIGINT received on Windows, setting shutdown event")
+            # Use call_soon_threadsafe since this runs in signal handler context
+            loop = asyncio.get_running_loop()
+            loop.call_soon_threadsafe(shutdown_event.set)
 
-    loop = asyncio.get_running_loop()
-    loop.add_signal_handler(signal.SIGINT, handle_sigint)
-    logger.debug("SIGINT handler installed via event loop")
+        signal.signal(signal.SIGINT, handle_sigint)
+        logger.debug("SIGINT handler installed via signal.signal (Windows)")
+    else:
+        # Unix: Use asyncio event loop signal handler
+        def handle_sigint():
+            logger.debug("SIGINT received, setting shutdown event")
+            shutdown_event.set()
+
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler(signal.SIGINT, handle_sigint)
+        logger.debug("SIGINT handler installed via event loop (Unix)")
 
     logger.debug("run(command=%s) starting", cmd_str)
 

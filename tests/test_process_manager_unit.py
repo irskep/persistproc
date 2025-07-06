@@ -83,7 +83,7 @@ class TestProcessManagerStart:
     """Test ProcessManager.start() method."""
 
     @patch("persistproc.process_manager.subprocess.Popen")
-    def test_start_success(self, mock_popen, process_manager):
+    def test_start_success(self, mock_popen, process_manager, temp_dir):
         """Test successful process start."""
         # Setup fake process
         fake_proc = FakeSubprocessPopen(pid=1234)
@@ -91,7 +91,7 @@ class TestProcessManagerStart:
 
         result = process_manager.start(
             command="echo hello",
-            working_directory=Path("/tmp"),
+            working_directory=temp_dir,
             environment={"TEST": "value"},
             label="test-echo",
         )
@@ -126,7 +126,7 @@ class TestProcessManagerStart:
         stored_proc = process_manager._storage.get_process_snapshot(5678)
         assert stored_proc.label == f"python script.py in {temp_dir}"
 
-    def test_start_duplicate_label_error(self, process_manager):
+    def test_start_duplicate_label_error(self, process_manager, temp_dir):
         """Test that starting process with duplicate running label fails."""
         # Add a running process with same label
         existing_proc = create_fake_proc_entry(
@@ -136,7 +136,7 @@ class TestProcessManagerStart:
 
         # Try to start another with same label
         result = process_manager.start(
-            command="echo test", working_directory=Path("/tmp"), label="test-label"
+            command="echo test", working_directory=temp_dir, label="test-label"
         )
 
         assert result.error is not None
@@ -153,24 +153,24 @@ class TestProcessManagerStart:
         assert "does not exist" in result.error
 
     @patch("persistproc.process_manager.subprocess.Popen")
-    def test_start_file_not_found(self, mock_popen, process_manager):
+    def test_start_file_not_found(self, mock_popen, process_manager, temp_dir):
         """Test starting non-existent command."""
         mock_popen.side_effect = FileNotFoundError("nonexistent-command")
 
         result = process_manager.start(
-            command="nonexistent-command", working_directory=Path("/tmp")
+            command="nonexistent-command", working_directory=temp_dir
         )
 
         assert result.error is not None
         assert "Command not found" in result.error
 
     @patch("persistproc.process_manager.subprocess.Popen")
-    def test_start_permission_error(self, mock_popen, process_manager):
+    def test_start_permission_error(self, mock_popen, process_manager, temp_dir):
         """Test starting command with permission error."""
         mock_popen.side_effect = PermissionError("permission denied")
 
         result = process_manager.start(
-            command="restricted-command", working_directory=Path("/tmp")
+            command="restricted-command", working_directory=temp_dir
         )
 
         assert result.error is not None
@@ -258,16 +258,14 @@ class TestProcessManagerStop:
         proc_entry = create_fake_proc_entry(pid=1234, status="running", proc=fake_proc)
         process_manager._storage.add_process(proc_entry)
 
-        with (
-            patch("persistproc.process_manager.os.killpg"),
-            patch("persistproc.process_manager.os.getpgid") as mock_getpgid,
-        ):
-            mock_getpgid.return_value = 1234
-
+        with patch.object(process_manager, "_send_signal") as mock_send_signal:
             # Simulate process exiting after SIGTERM
             fake_proc.returncode = 0
 
             result = process_manager.stop(pid=1234)
+
+            # Verify signal was sent
+            mock_send_signal.assert_called_with(1234, "TERM")
 
         assert result.error is None
         assert result.exit_code == 0
@@ -298,14 +296,14 @@ class TestProcessManagerRestart:
         assert "not found" in result.error.lower()
 
     @patch("persistproc.process_manager.subprocess.Popen")
-    def test_restart_success(self, mock_popen, process_manager):
+    def test_restart_success(self, mock_popen, process_manager, temp_dir):
         """Test successful restart."""
         # Setup original process
         original_proc = FakeSubprocessPopen(pid=1234, returncode=None)
         proc_entry = create_fake_proc_entry(
             pid=1234,
             command=["python", "script.py"],
-            working_directory="/tmp",
+            working_directory=str(temp_dir),
             status="running",
             proc=original_proc,
         )
@@ -315,10 +313,7 @@ class TestProcessManagerRestart:
         new_proc = FakeSubprocessPopen(pid=5678)
         mock_popen.return_value = new_proc
 
-        with (
-            patch("persistproc.process_manager.os.killpg"),
-            patch("persistproc.process_manager.os.getpgid"),
-        ):
+        with patch.object(process_manager, "_send_signal"):
             # Simulate original process exiting
             original_proc.returncode = 0
 
