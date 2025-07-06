@@ -28,13 +28,22 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
 def start_persistproc() -> subprocess.Popen[str]:
     """Start persistproc server in the background and wait until ready."""
     cmd = ["python", "-m", "persistproc", "-vv", "serve"]
-    proc = subprocess.Popen(
-        cmd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
+
+    # Cross-platform process creation
+    kwargs = {
+        "text": True,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+    }
+
+    if os.name == "nt":
+        # Windows: Use CREATE_NEW_PROCESS_GROUP
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        # Unix-like: Use start_new_session
+        kwargs["start_new_session"] = True
+
+    proc = subprocess.Popen(cmd, **kwargs)
 
     # Wait for server readiness line.
     while True:
@@ -51,13 +60,33 @@ def start_persistproc() -> subprocess.Popen[str]:
     return proc
 
 
+def _is_process_running(pid: int) -> bool:
+    """Check if process is running cross-platform."""
+    try:
+        if os.name == "nt":
+            # Windows: Use tasklist command
+            result = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            return str(pid) in result.stdout
+        else:
+            # Unix-like: Use os.kill with signal 0
+            os.kill(pid, 0)
+            return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
 def kill_persistproc(proc: subprocess.Popen[str]) -> None:
     """Kill the persistproc server."""
     # call kill-persistproc tool
     result = run_cli("kill-persistproc")
     pid = extract_json(result.stdout)["pid"]
     # loop until given pid is no longer running
-    while os.path.exists(f"/proc/{pid}"):
+    while _is_process_running(pid):
         time.sleep(0.1)
 
 
@@ -99,13 +128,22 @@ def start_run(cmd_tokens: list[str], *, on_exit: str = "stop") -> subprocess.Pop
         "--",
         *cmd_tokens,
     ]
-    return subprocess.Popen(
-        cli_cmd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-    )
+
+    # Cross-platform process creation
+    kwargs = {
+        "text": True,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+    }
+
+    if os.name == "nt":
+        # Windows: Use CREATE_NEW_PROCESS_GROUP
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        # Unix-like: Use start_new_session
+        kwargs["start_new_session"] = True
+
+    return subprocess.Popen(cli_cmd, **kwargs)
 
 
 def stop_run(proc: subprocess.Popen[str], timeout: float = 15.0) -> None:
@@ -113,8 +151,13 @@ def stop_run(proc: subprocess.Popen[str], timeout: float = 15.0) -> None:
     if proc.poll() is not None:
         return
 
-    # Send SIGINT to trigger the graceful shutdown logic in `run.py`.
-    proc.send_signal(signal.SIGINT)
+    # Send interrupt signal cross-platform
+    if os.name == "nt":
+        # Windows: Use CTRL_C_EVENT
+        proc.send_signal(signal.CTRL_C_EVENT)
+    else:
+        # Unix-like: Use SIGINT
+        proc.send_signal(signal.SIGINT)
 
     try:
         # Wait for the process to terminate. The `run` command's own logic
@@ -126,8 +169,20 @@ def stop_run(proc: subprocess.Popen[str], timeout: float = 15.0) -> None:
         # If it's still alive, force-kill it.
         print(f"Process {proc.pid} did not exit after {timeout}s, killing.")
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
+            if os.name == "nt":
+                # Windows: Use terminate then kill
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            else:
+                # Unix-like: Use process group kill
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, AttributeError):
             proc.kill()  # Fallback
         finally:
-            proc.wait(timeout=5.0)
+            try:
+                proc.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                pass  # Process may already be dead
