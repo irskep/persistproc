@@ -82,7 +82,9 @@ def test_process_has_output(server):
     time.sleep(1)
 
     # Get the output of the process.
-    output = run_cli("get-output", str(pid), "stdout", "--lines", "10")
+    output = run_cli(
+        "get-output", "--stream", "stdout", "--lines", "10", "--", str(pid)
+    )
     output_lines = extract_json(output.stdout)["output"]
     assert isinstance(output_lines, list)
     assert len(output_lines) > 0
@@ -147,17 +149,9 @@ def test_start_process_with_working_directory(server):
     # Use a different directory (parent of current script location)
     work_dir = str(Path(__file__).parent.parent)
 
-    # CLI expects: start COMMAND [args...] --working-directory DIR
-    # So we pass the command as separate arguments
-    start = run_cli(
-        "start",
-        "python",
-        str(COUNTER_SCRIPT),
-        "--num-iterations",
-        "5",
-        "--working-directory",
-        work_dir,
-    )
+    # CLI expects: start --working-directory DIR COMMAND
+    start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 5"
+    start = run_cli("start", "--working-directory", work_dir, start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
@@ -172,17 +166,10 @@ def test_start_process_with_working_directory(server):
 
 
 def test_start_process_with_environment(server):
-    """Test start with environment parameter."""
-    # CLI expects: start COMMAND [args...] --environment KEY=VALUE
-    start = run_cli(
-        "start",
-        "python",
-        str(COUNTER_SCRIPT),
-        "--num-iterations",
-        "5",
-        "--environment",
-        "TEST_VAR=test_value",
-    )
+    """Test start inherits environment from shell."""
+    # Environment variables are inherited from shell, not passed via CLI
+    start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 5"
+    start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
@@ -197,13 +184,8 @@ def test_start_process_with_environment(server):
 
 def test_stop_process_with_force(server):
     """Test stop with force=True."""
-    start = run_cli(
-        "start",
-        "python",
-        str(COUNTER_SCRIPT),
-        "--num-iterations",
-        "0",
-    )
+    start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
+    start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
@@ -224,19 +206,15 @@ def test_stop_process_with_force(server):
 def test_get_process_output_stderr(server):
     """Test get_output with stderr stream."""
     # Use a script that writes to stderr
-    start = run_cli(
-        "start",
-        "python",
-        "-c",
-        "import sys; import time; [print('error', i, file=sys.stderr) or time.sleep(0.1) for i in range(20)]",
-    )
+    start_cmd = "python -c \"import sys; import time; [print('error', i, file=sys.stderr) or time.sleep(0.1) for i in range(20)]\""
+    start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
     time.sleep(1)
 
     # Get stderr output
-    output = run_cli("get-output", str(pid), "stderr", "--lines", "5")
+    output = run_cli("get-output", "--stream", "stderr", "--lines", "5", "--", str(pid))
     output_data = extract_json(output.stdout)
     output_lines = output_data["output"]
     assert isinstance(output_lines, list)
@@ -251,20 +229,15 @@ def test_get_process_output_stderr(server):
 
 def test_get_process_output_with_lines_limit(server):
     """Test get_output with lines parameter."""
-    start = run_cli(
-        "start",
-        "python",
-        str(COUNTER_SCRIPT),
-        "--num-iterations",
-        "0",
-    )
+    start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
+    start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
     time.sleep(2)  # Let it generate some output
 
     # Get limited output
-    output = run_cli("get-output", str(pid), "stdout", "--lines", "3")
+    output = run_cli("get-output", "--stream", "stdout", "--lines", "3", "--", str(pid))
     output_data = extract_json(output.stdout)
     output_lines = output_data["output"]
     assert isinstance(output_lines, list)
@@ -276,13 +249,8 @@ def test_get_process_output_with_lines_limit(server):
 
 def test_get_process_output_with_time_filters(server):
     """Test get_output with before_time and since_time parameters."""
-    start = run_cli(
-        "start",
-        "python",
-        str(COUNTER_SCRIPT),
-        "--num-iterations",
-        "0",
-    )
+    start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
+    start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
@@ -298,12 +266,14 @@ def test_get_process_output_with_time_filters(server):
     # Get output since timestamp
     output = run_cli(
         "get-output",
-        str(pid),
+        "--stream",
         "stdout",
         "--lines",
         "10",
         "--since-time",
         timestamp,
+        "--",
+        str(pid),
     )
     output_data = extract_json(output.stdout)
     assert isinstance(output_data["output"], list)
@@ -312,12 +282,14 @@ def test_get_process_output_with_time_filters(server):
     future_timestamp = datetime.datetime.now().isoformat()
     output = run_cli(
         "get-output",
-        str(pid),
+        "--stream",
         "stdout",
         "--lines",
         "10",
         "--before-time",
         future_timestamp,
+        "--",
+        str(pid),
     )
     output_data = extract_json(output.stdout)
     assert isinstance(output_data["output"], list)

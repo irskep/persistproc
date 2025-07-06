@@ -21,8 +21,8 @@ def _build_app(pm: ProcessManager) -> FastMCP:  # noqa: D401 – helper
     """Return a *FastMCP* application with all *persistproc* tools registered."""
 
     app = FastMCP(
-        "PersistProc",
-        "A shared process layer for multi-agent development workflows.",
+        "persistproc",
+        "Manage long-running processes and read their output",
     )
 
     for tool_cls in ALL_TOOL_CLASSES:
@@ -32,7 +32,7 @@ def _build_app(pm: ProcessManager) -> FastMCP:  # noqa: D401 – helper
     return app
 
 
-def serve(port: int, verbose: int, data_dir: Path, log_path: Path) -> None:  # noqa: D401
+def serve(port: int, data_dir: Path) -> None:  # noqa: D401
     """Start the *persistproc* MCP server.
 
     By default this function logs the intended bind address and *returns* so
@@ -45,8 +45,7 @@ def serve(port: int, verbose: int, data_dir: Path, log_path: Path) -> None:  # n
 
     # The server blocks in the foreground until interrupted.
 
-    pm = ProcessManager()
-    pm.bootstrap(data_dir, server_log_path=log_path)
+    pm = ProcessManager(data_dir=data_dir)
     app = _build_app(pm)
 
     url = f"http://127.0.0.1:{port}/mcp/"

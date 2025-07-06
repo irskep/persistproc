@@ -22,8 +22,6 @@ class ServeAction:
 
     port: int
     data_dir: Path
-    verbose: int
-    log_path: Path
 
 
 @dataclass
@@ -36,8 +34,7 @@ class RunAction:
     on_exit: str
     raw: bool
     port: int
-    data_dir: Path
-    verbose: int
+    label: str | None
 
 
 @dataclass
@@ -46,6 +43,15 @@ class ToolAction:
 
     args: Namespace
     tool: Any
+    port: int
+
+
+@dataclass
+class CLIMetadata:
+    """Common CLI metadata not specific to any action."""
+
+    verbose: int
+    log_path: Path
 
 
 CLIAction = ServeAction | RunAction | ToolAction
@@ -95,8 +101,8 @@ def parse_command_and_args(program: str, args: list[str]) -> tuple[str, list[str
     return command, run_args
 
 
-def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
-    """Parse command line arguments and return a CLIAction and log path."""
+def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
+    """Parse command line arguments and return a CLIAction and metadata."""
     parser = argparse.ArgumentParser(
         description="Process manager for multi-agent development workflows\n\nDocs: https://steveasleep.com/persistproc-mcp"
     )
@@ -172,13 +178,6 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         parents=[common_parser],
     )
     p_run.add_argument(
-        "program",
-        help="The program to run (e.g. 'python' or 'ls'). If the string contains spaces, it will be shell-split unless additional arguments are provided separately.",
-    )
-    p_run.add_argument(
-        "args", nargs=argparse.REMAINDER, help="Arguments to the program"
-    )
-    p_run.add_argument(
         "--fresh",
         action="store_true",
         help="Stop an existing running instance of the same command before starting a new one.",
@@ -194,6 +193,16 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         action="store_true",
         help="Show raw timestamped log lines (default strips ISO timestamps).",
     )
+    p_run.add_argument(
+        "--label",
+        type=str,
+        help="Custom label for the process (default: '<command> in <working_directory>').",
+    )
+    p_run.add_argument(
+        "program",
+        help="The program to run (e.g. 'python' or 'ls'). If the string contains spaces, it will be shell-split unless additional arguments are provided separately.",
+    )
+    p_run.add_argument("args", nargs="*", help="Arguments to the program")
 
     # ------------------------------------------------------------------
     # Tool sub-commands – accept *both* snake_case and kebab-case variants
@@ -297,15 +306,12 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
     port_val = getattr(args, "port", get_default_port())
     data_dir_val = getattr(args, "data_dir", get_default_data_dir())
     verbose_val = getattr(args, "verbose", 0) - getattr(args, "quiet", 0)
-    print(f"verbose_val: {verbose_val}")
 
     action: CLIAction
     if args.command == "serve":
         action = ServeAction(
             port=port_val,
             data_dir=data_dir_val,
-            verbose=verbose_val,
-            log_path=log_path,
         )
     elif args.command == "run":
         command, run_args = parse_command_and_args(args.program, args.args)
@@ -316,8 +322,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
             on_exit=args.on_exit,
             raw=args.raw,
             port=port_val,
-            data_dir=data_dir_val,
-            verbose=verbose_val,
+            label=getattr(args, "label", None),
         )
     elif args.command in tools_by_name:
         # Ensure tool sub-commands always have a `port` attribute so
@@ -325,20 +330,21 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, Path]:
         if not hasattr(args, "port"):
             args.port = port_val
         tool = tools_by_name[args.command]
-        action = ToolAction(args=args, tool=tool)
+        action = ToolAction(args=args, tool=tool, port=port_val)
     else:
         parser.print_help()
         sys.exit(1)
 
-    return action, log_path
+    metadata = CLIMetadata(verbose=verbose_val, log_path=log_path)
+    return action, metadata
 
 
-def handle_cli_action(action: CLIAction, log_path: Path) -> None:
+def handle_cli_action(action: CLIAction, metadata: CLIMetadata) -> None:
     """Execute the action determined by the CLI."""
-    CLI_LOGGER.info("Verbose log for this run: %s", shlex.quote(str(log_path)))
+    CLI_LOGGER.info("Verbose log for this run: %s", shlex.quote(str(metadata.log_path)))
 
     if isinstance(action, ServeAction):
-        serve(action.port, action.verbose, action.data_dir, action.log_path)
+        serve(action.port, action.data_dir)
     elif isinstance(action, RunAction):
         CLI_LOGGER.info(
             "Running command: %s %s", action.command, " ".join(action.run_args)
@@ -346,21 +352,21 @@ def handle_cli_action(action: CLIAction, log_path: Path) -> None:
         run(
             action.command,
             action.run_args,
-            action.verbose,
             fresh=action.fresh,
             on_exit=action.on_exit,
             raw=action.raw,
             port=action.port,
+            label=action.label,
         )
     elif isinstance(action, ToolAction):
-        action.tool.call_with_args(action.args)
+        action.tool.call_with_args(action.args, action.port)
 
 
 def cli() -> None:
     """Main CLI entry point."""
     try:
-        action, log_path = parse_cli(sys.argv[1:])
-        handle_cli_action(action, log_path)
+        action, metadata = parse_cli(sys.argv[1:])
+        handle_cli_action(action, metadata)
     except SystemExit as e:
         if e.code != 0:
             # argparse prints help and exits, so we only need to re-raise for actual errors
@@ -375,4 +381,5 @@ __all__ = [
     "RunAction",
     "ToolAction",
     "CLIAction",
+    "CLIMetadata",
 ]
