@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import os
 import signal
@@ -64,14 +65,34 @@ def _is_process_running(pid: int) -> bool:
     """Check if process is running cross-platform."""
     try:
         if os.name == "nt":
-            # Windows: Use tasklist command
+            # Windows: Use tasklist command with proper CSV parsing
             result = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV"],
                 capture_output=True,
                 text=True,
                 check=False,
             )
-            return str(pid) in result.stdout
+            if result.returncode != 0:
+                return False
+
+            # Parse CSV output properly - tasklist returns header + process lines
+            lines = result.stdout.strip().split("\n")
+            if len(lines) < 2:  # Need header + at least one process line
+                return False
+
+            # Check if any line contains the exact PID in the second column
+            try:
+                reader = csv.reader(lines)
+                next(reader)  # Skip header row
+                for row in reader:
+                    if len(row) >= 2 and row[1].strip() == str(pid):
+                        return True
+            except csv.Error:
+                # Fallback to string search if CSV parsing fails
+                pid_str = f'"{pid}"'  # PID is quoted in CSV output
+                return pid_str in result.stdout
+
+            return False
         else:
             # Unix-like: Use os.kill with signal 0
             os.kill(pid, 0)
@@ -154,12 +175,9 @@ def stop_run(proc: subprocess.Popen[str], timeout: float = 15.0) -> None:
     # Send interrupt signal cross-platform
     try:
         if os.name == "nt":
-            # Windows: Use CTRL_C_EVENT, but fallback to terminate if that fails
-            try:
-                proc.send_signal(signal.CTRL_C_EVENT)
-            except (OSError, AttributeError):
-                # CTRL_C_EVENT may not work in all contexts, fallback to terminate
-                proc.terminate()
+            # Windows: Use terminate() directly for reliability
+            # CTRL_C_EVENT is unreliable in CI environments and can affect pytest-xdist workers
+            proc.terminate()
         else:
             # Unix-like: Use SIGINT
             proc.send_signal(signal.SIGINT)

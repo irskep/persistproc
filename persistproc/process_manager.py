@@ -160,8 +160,16 @@ class ProcessManager:  # noqa: D101
         }
 
         try:
+            # Cross-platform command splitting
+            if os.name == "nt":
+                # Windows: Use shlex.split with posix=False for Windows-style parsing
+                cmd_args = shlex.split(command, posix=False)
+            else:
+                # Unix: Use standard shlex.split with POSIX parsing
+                cmd_args = shlex.split(command)
+
             proc = subprocess.Popen(  # noqa: S603 – user command
-                shlex.split(command),
+                cmd_args,
                 cwd=str(working_directory),
                 env={**os.environ, **(environment or {})},
                 stdout=subprocess.PIPE,
