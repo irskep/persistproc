@@ -24,8 +24,19 @@ def get_help_text(command):
     print(" ✅")  # Complete the progress line
 
     output_lines = result.stdout.splitlines()
+
+    # Filter mise and uv dependency installation output
+    dependency_patterns = [
+        r"Installing dependencies\.\.\.",
+        r"^\[deps:sync\]",
+        r"^\s*\+\s+\w+==",  # + package==version
+        r"^\s*\$\s+uv\s+sync",  # $ uv sync commands
+    ]
+
     filtered_output_lines = [
-        line for line in output_lines if "Installing dependencies..." not in line
+        line
+        for line in output_lines
+        if not any(re.search(pattern, line) for pattern in dependency_patterns)
     ]
     output = "\n".join(filtered_output_lines)
 
