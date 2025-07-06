@@ -29,7 +29,7 @@ graph TB
     PP <-->|"manages / logs"| NPM["npm run dev<br/>(web server)"]
     PP -.->|"streams output"| User
     
-    Agent[Cursor] -.->|"get_output()<br/>restart()"| PP
+    Agent[Cursor] -.->|"output()<br/>restart()"| PP
     
     style PP fill:#e1f5fe,stroke:#01579b,stroke-width:2px
     style NPM fill:#fff3e0,stroke:#e65100,stroke-width:2px
@@ -95,13 +95,13 @@ The server exposes the following tools:
 
 | Tool | Description |
 | --- | --- |
-| `start(command: str, working_directory: str = None, environment: dict = None)` | Start a new long-running process. |
+| `start(command: str, working_directory: str, environment: dict = None, label: str = None)` | Start a new long-running process. |
 | `list()` | List all managed processes and their status. |
-| `get_status(pid: int)` | Get the detailed status of a specific process. |
-| `stop(pid: int, command: str = None, working_directory: str = None, force: bool = False)` | Stop a running process by its PID. |
-| `restart(pid: int, command: str = None, working_directory: str = None)` | Stops a process and starts it again with the same parameters. |
-| `get_output(pid: int, stream: str, lines: int = None, before_time: str = None, since_time: str = None)` | Retrieve captured output from a process. |
-| `get_log_paths(pid: int)` | Get the paths to the log files for a specific process. |
+| `status(pid: int = None, command_or_label: str = None, working_directory: str = None)` | Get the detailed status of a specific process. |
+| `stop(pid: int = None, command_or_label: str = None, working_directory: str = None, force: bool = False, label: str = None)` | Stop a running process. |
+| `restart(pid: int = None, command_or_label: str = None, working_directory: str = None)` | Stops a process and starts it again with the same parameters. |
+| `output(pid: int = None, command_or_label: str = None, stream: str = "combined", lines: int = None, before_time: str = None, since_time: str = None, working_directory: str = None)` | Retrieve captured output from a process. |
+| `get_log_paths(pid: int = None, command_or_label: str = None, working_directory: str = None)` | Get the paths to the log files for a specific process. |
 | `kill_persistproc()` | Kill all managed processes and get the PID of the persistproc server. |
 
 ## Getting started
@@ -151,7 +151,7 @@ Once your agent is connected, you can ask it to manage your processes. Assuming 
     *   **Agent**: Identifies the correct process and calls `restart(pid=12345)`.
 
 *   **You**: "Show me any errors from the web server."
-    *   **Agent**: Calls `get_output(pid=12345, stream="stderr")` to retrieve the latest error logs.
+    *   **Agent**: Calls `output(pid=12345, stream="stderr")` to retrieve the latest error logs.
 
 ## Development
 
