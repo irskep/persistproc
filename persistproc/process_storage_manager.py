@@ -83,6 +83,27 @@ class ProcessStorageManager:
         """Check if stop event is set."""
         return self._stop_evt.is_set()
 
+    def cleanup_old_terminated_processes(self, max_terminated: int = 10) -> None:
+        """Remove oldest terminated processes, keeping only max_terminated."""
+        with self._lock:
+            # Find all terminated processes
+            terminated_entries = [
+                (pid, entry)
+                for pid, entry in self._processes.items()
+                if entry.status in ("exited", "terminated", "failed")
+            ]
+
+            # If we have more than max_terminated, remove the oldest
+            if len(terminated_entries) > max_terminated:
+                # Sort by exit_time, oldest first (None exit_time goes first)
+                terminated_entries.sort(key=lambda x: x[1].exit_time or "")
+
+                # Remove oldest until we're at the limit
+                to_remove = len(terminated_entries) - max_terminated
+                for i in range(to_remove):
+                    pid_to_remove = terminated_entries[i][0]
+                    del self._processes[pid_to_remove]
+
     def _to_public_info(self, ent: _ProcEntry) -> ProcessInfo:
         """Convert internal entry to public info."""
         return ProcessInfo(
@@ -91,4 +112,6 @@ class ProcessStorageManager:
             working_directory=ent.working_directory,
             status=ent.status,
             label=ent.label,
+            start_time=ent.start_time,
+            end_time=ent.exit_time,
         )

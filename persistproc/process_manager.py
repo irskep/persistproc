@@ -316,16 +316,17 @@ class ProcessManager:  # noqa: D101
             return StopProcessResult(error="timeout")
 
         # Process exited – record metadata.
+        exit_code = ent.proc.returncode if ent.proc else 0
         self._storage.update_process_in_place(
             pid_to_stop,
             status="terminated",
-            exit_code=ent.exit_code if ent.exit_code is not None else 0,
+            exit_code=exit_code,
             exit_time=_get_iso_ts(),
             proc=None,
         )
 
-        logger.debug("event=stopped pid=%s exit_code=%s", pid_to_stop, ent.exit_code)
-        return StopProcessResult(exit_code=ent.exit_code)
+        logger.debug("event=stopped pid=%s exit_code=%s", pid_to_stop, exit_code)
+        return StopProcessResult(exit_code=exit_code)
 
     def restart(
         self,
@@ -710,6 +711,8 @@ class ProcessManager:  # noqa: D101
             working_directory=ent.working_directory,
             status=ent.status,
             label=ent.label,
+            start_time=ent.start_time,
+            end_time=ent.exit_time,
         )
 
     def _monitor_loop(self) -> None:  # noqa: D401 – thread target
@@ -740,6 +743,9 @@ class ProcessManager:  # noqa: D101
                     logger.info(
                         "Process %s exited with code %s", ent.pid, ent.proc.returncode
                     )
+
+            # Cleanup old terminated processes periodically
+            self._storage.cleanup_old_terminated_processes(max_terminated=10)
 
             logger.debug(
                 "event=monitor_tick_end, checked %d procs", len(procs_to_check)
