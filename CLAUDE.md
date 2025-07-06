@@ -17,3 +17,5 @@ Instead:
 - Use the test suite to verify functionality
 - Use the test helpers in `tests/helpers.py` for programmatic testing
 - Debug issues through test output and logging
+
+**NEVER background a process with an `&` suffix.**

@@ -251,7 +251,7 @@ class ListProcessesTool(ITool):
 
 
 class GetProcessStatusTool(ITool):
-    name = "get_status"
+    name = "status"
     cli_description = "Get the detailed status of a specific process"
     mcp_description = "Get the detailed information about a specific process, including its PID, command, working directory, and status."
 
@@ -264,7 +264,7 @@ class GetProcessStatusTool(ITool):
     ) -> ProcessStatusResult:
         """Get the detailed status of a specific process."""
         logger.debug(
-            "get_status called for pid=%s, command_or_label=%s",
+            "status called for pid=%s, command_or_label=%s",
             pid,
             command_or_label,
         )
@@ -275,7 +275,7 @@ class GetProcessStatusTool(ITool):
         )
 
     def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
-        def get_status(
+        def status(
             pid: int | None = None,
             command_or_label: str | None = None,
             working_directory: str | None = None,
@@ -286,7 +286,7 @@ class GetProcessStatusTool(ITool):
 
         mcp.add_tool(
             FunctionTool.from_function(
-                get_status, name=self.name, description=self.mcp_description
+                status, name=self.name, description=self.mcp_description
             )
         )
 
@@ -464,7 +464,7 @@ class RestartProcessTool(ITool):
 
 
 class GetProcessOutputTool(ITool):
-    name = "get_output"
+    name = "output"
     cli_description = "Retrieve captured output from a process"
     mcp_description = "Retrieve captured output from a process. If no arguments are provided, the last 100 lines of the combined stdout+stderr output are returned."
 
@@ -481,7 +481,7 @@ class GetProcessOutputTool(ITool):
     ) -> ProcessOutputResult:
         """Retrieve captured output from a process."""
         logger.debug(
-            "get_output called pid=%s stream=%s lines=%s before=%s since=%s",
+            "output called pid=%s stream=%s lines=%s before=%s since=%s",
             pid,
             stream,
             lines,
@@ -499,7 +499,7 @@ class GetProcessOutputTool(ITool):
         )
 
     def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
-        def get_output(
+        def output(
             stream: StreamEnum = StreamEnum.combined,
             lines: int | None = 100,
             before_time: str | None = None,
@@ -521,7 +521,7 @@ class GetProcessOutputTool(ITool):
 
         mcp.add_tool(
             FunctionTool.from_function(
-                get_output, name=self.name, description=self.mcp_description
+                output, name=self.name, description=self.mcp_description
             )
         )
 
@@ -571,7 +571,7 @@ class GetProcessOutputTool(ITool):
 class GetProcessLogPathsTool(ITool):
     name = "get_log_paths"
     cli_description = "Get the paths to the log files for a specific process"
-    mcp_description = "Get the paths on the filesystem to the log files for a specific process. Usually you want get_output instead."
+    mcp_description = "Get the paths on the filesystem to the log files for a specific process. Usually you want 'output' instead."
 
     @staticmethod
     def _apply(

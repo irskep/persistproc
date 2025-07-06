@@ -7,6 +7,7 @@ __all__ = [
     "StartProcessResult",
     "StopProcessResult",
     "ProcessInfo",
+    "KillPersistprocResult",
     "ListProcessesResult",
     "ProcessStatusResult",
     "ProcessOutputResult",

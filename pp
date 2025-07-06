@@ -27,9 +27,6 @@ source .venv/bin/activate
 echo "Installing dependencies..."
 uv pip install -e ".[dev]"
 
-echo "Formatting with black..."
-black .
-
 # Change back to the original directory before running the user's command
 cd "$ORIGINAL_CWD"
 

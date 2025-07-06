@@ -2,13 +2,14 @@
 
 from pathlib import Path
 from unittest.mock import Mock, patch
+
 import pytest
 
 from persistproc.process_manager import ProcessManager, get_label
 from tests.fakes import (
     FakeSubprocessPopen,
-    create_fake_registry,
     create_fake_proc_entry,
+    create_fake_registry,
 )
 
 
@@ -414,7 +415,7 @@ class TestProcessManagerKillPersistproc:
         ):
             result = process_manager.kill_persistproc()
 
-            assert result["pid"] == 12345
+            assert result.pid == 12345
             # Should start a thread to kill the server
             mock_thread.assert_called_once()
 
@@ -434,7 +435,7 @@ class TestProcessManagerKillPersistproc:
         ):
             result = process_manager.kill_persistproc()
 
-            assert result["pid"] == 12345
+            assert result.pid == 12345
             # Should only try to stop running processes
             mock_stop.assert_called_once_with(1234, force=True)
             mock_thread.assert_called_once()

@@ -197,7 +197,21 @@ def server(persistproc_server):  # alias for convenience
     return persistproc_server
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def logging_config():
-    # disable httpcore.http11
-    logging.getLogger("httpcore.http11").setLevel(logging.WARNING)
+    """Silence overly verbose third-party loggers during tests."""
+    # These loggers are very verbose and don't provide useful info for debugging persistproc issues
+    noisy_loggers = [
+        "httpcore.http11",
+        "mcp.server.streamable_http",
+        "mcp.server.streamable_http_manager",
+        "mcp.server.lowlevel.server",
+        "sse_starlette.sse",
+        "asyncio",
+        "FastMCP.fastmcp.server.server",
+        "uvicorn.access",
+        "uvicorn.error",
+    ]
+
+    for logger_name in noisy_loggers:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)

@@ -109,7 +109,7 @@ def test_duplicate_label_prevention(server):
 
 
 def test_get_status_includes_label(server):
-    """Test that get_status includes the process label."""
+    """Test that status includes the process label."""
 
     # Start process with custom label
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 5"
@@ -118,7 +118,7 @@ def test_get_status_includes_label(server):
     pid = data["pid"]
 
     # Get status
-    status = run_cli("get_status", str(pid))
+    status = run_cli("status", str(pid))
     status_data = extract_json(status.stdout)
 
     # Verify label is included in status

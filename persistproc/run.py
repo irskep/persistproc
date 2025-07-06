@@ -247,7 +247,7 @@ async def _async_get_process_status(port: str, pid: int) -> str | None:  # noqa:
     """Return status string for *pid* or *None* if request fails."""
 
     async with make_client(port) as client:
-        res = await client.call_tool("get_status", {"pid": pid})
+        res = await client.call_tool("status", {"pid": pid})
         info = json.loads(res[0].text)
         return info.get("status")
 
