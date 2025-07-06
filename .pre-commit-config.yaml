@@ -6,5 +6,9 @@ repos:
       # Run the linter
       - id: ruff-check
         args: [--fix]
+        types_or: [python, pyi]
+        files: ^(.*\.py|scripts/.*)$
       # Run the formatter
       - id: ruff-format
+        types_or: [python, pyi]
+        files: ^(.*\.py|scripts/.*)$

@@ -100,6 +100,38 @@ def sync_dependencies() -> None:
         print(f"Warning: uv sync failed: {result.stderr}", file=sys.stderr)
 
 
+def create_commit(new_version: str) -> None:
+    """Create a git commit with the version."""
+    project_dir = get_project_dir()
+
+    # Add all changes
+    result = subprocess.run(
+        ["git", "add", "-A"],
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        print(f"Warning: git add failed: {result.stderr}", file=sys.stderr)
+        return
+
+    # Create commit
+    commit_message = f"v{new_version}"
+    result = subprocess.run(
+        ["git", "commit", "-m", commit_message],
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        print(f"Warning: git commit failed: {result.stderr}", file=sys.stderr)
+        return
+
+    print(f"✅ Created commit: {commit_message}")
+
+
 def main() -> None:
     """Main function."""
     parser = argparse.ArgumentParser(description="Bump version for persistproc")
@@ -120,6 +152,7 @@ def main() -> None:
 
         update_version_files(new_version)
         sync_dependencies()
+        create_commit(new_version)
 
         print("✅ Version bumped successfully")
         print("📝 Files updated:")
@@ -129,11 +162,8 @@ def main() -> None:
         print()
         print("💡 Next steps:")
         print("   1. Update CHANGELOG.md")
-        print(
-            f'   2. Commit changes: git add -A && git commit -m "Bump version to {new_version}"'
-        )
-        print(f"   3. Create tag: git tag v{new_version}")
-        print("   4. Push: git push origin main --tags")
+        print(f"   2. Create tag: git tag v{new_version}")
+        print("   3. Push: git push origin main --tags")
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
