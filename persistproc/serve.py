@@ -51,15 +51,30 @@ def serve(port: int, data_dir: Path) -> None:  # noqa: D401
     CLI_LOGGER.info("Starting MCP server on %s", url)
 
     if not get_is_quiet():
+
+        def safe_rule(title: str = "") -> None:
+            """Print a console rule with fallback for Windows encoding issues."""
+            try:
+                if title:
+                    console.rule(f"[bold yellow]{title}[/bold yellow]")
+                else:
+                    console.rule()
+            except UnicodeEncodeError:
+                # Fallback for Windows cp1252 encoding issues
+                if title:
+                    print(f"--- {title} ---")
+                else:
+                    print("-" * 50)
+
         # centered, with ------ lines above and below
-        console.rule("[bold yellow]Cursor[/bold yellow]")
+        safe_rule("Cursor")
         print("In ~/.cursor/mcp.json:")
         print_json(data={"mcpServers": {"persistproc": {"url": url}}})
-        console.rule("[bold yellow]Claude Code[/bold yellow]")
+        safe_rule("Claude Code")
         print()
         print(f"claude mcp add --transport http persistproc {url}")
         print()
-        console.rule("[bold yellow]Gemini CLI[/bold yellow]")
+        safe_rule("Gemini CLI")
         print("In ~/.gemini/settings.json:")
         print_json(
             data={
@@ -71,7 +86,7 @@ def serve(port: int, data_dir: Path) -> None:  # noqa: D401
                 }
             }
         )
-        console.rule("[bold yellow]Other[/bold yellow]")
+        safe_rule("Other")
         print()
         print(f"persistproc uses the HTTP transport protocol on {url}.")
         print("Read your agent's documentation to learn how to hook it up.")
@@ -86,7 +101,7 @@ def serve(port: int, data_dir: Path) -> None:  # noqa: D401
             "[link=https://github.com/openai/codex?tab=readme-ov-file#model-context-protocol-mcp]Codex CLI[/link]"
         )
         print()
-        console.rule()
+        safe_rule()
 
     try:
         app.run(transport="http", host="127.0.0.1", port=port, path="/mcp/")
