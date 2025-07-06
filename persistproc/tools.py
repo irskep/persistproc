@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import abc
-import asyncio
-import json
-import logging
 import os
 import shlex
 from argparse import ArgumentParser, Namespace
@@ -11,10 +8,9 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool
-from persistproc.client import make_client
-from persistproc.logging_utils import CLI_LOGGER
 from persistproc.process_manager import ProcessManager
 
+from .mcp_client_utils import execute_mcp_request
 from .process_types import (
     KillPersistprocResult,
     ListProcessesResult,
@@ -26,6 +22,8 @@ from .process_types import (
     StopProcessResult,
     StreamEnum,
 )
+
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -50,70 +48,6 @@ def _parse_target_to_pid_or_command_or_label(
         # Multiple arguments - treat as command with args
         command_or_label = shlex.join([target] + args)
         return None, command_or_label
-
-
-def _make_mcp_request(tool_name: str, port: int, payload: dict | None = None) -> None:
-    """Make a request to the MCP server and print the response. This is how the
-    command line communicates with the server to do just about anything."""
-    payload = payload or {}
-
-    async def _do_call() -> None:
-        async with make_client(port) as client:
-            # Filter out None values from payload before sending
-            json_payload = {k: v for k, v in payload.items() if v is not None}
-            results = await client.call_tool(tool_name, json_payload)
-
-            if not results:
-                CLI_LOGGER.error(
-                    "No response from server for tool '%s'. Is the server running?",
-                    tool_name,
-                )
-                return
-
-            # Result is a JSON string in the `text` attribute.
-            # TODO: take a --format=text|json parameter for human vs machine output
-            result_data = json.loads(results[0].text)
-
-            # Always pretty-print the raw JSON to stdout so machine parsers (tests) can
-            # reliably consume the output regardless of whether there's an error.
-            print(json.dumps(result_data, indent=2))
-
-            if result_data.get("error"):
-                CLI_LOGGER.error(result_data["error"])
-                return
-
-            # Special human-friendly output in addition to JSON.
-            if tool_name == "list":
-                procs = result_data.get("processes", [])
-                if not procs:
-                    CLI_LOGGER.info("No processes running.")
-
-    try:
-        asyncio.run(_do_call())
-    except ConnectionError:
-        CLI_LOGGER.error(
-            "Cannot connect to persistproc server on port %d. Start it with 'persistproc serve'.",
-            port,
-        )
-    except Exception as e:
-        # Check if this is an MCP tool error response
-        error_str = str(e)
-        # log the raw error to stderr
-        logger.error(e)
-        if error_str.startswith("Error calling tool"):
-            # Extract the error message and output as JSON for tests
-            error_msg = error_str.replace(f"Error calling tool '{tool_name}': ", "")
-            error_response = {"error": error_msg}
-            print(json.dumps(error_response, indent=2))
-            CLI_LOGGER.error(error_msg)
-        else:
-            CLI_LOGGER.error(
-                "Unexpected error while calling tool '%s': %s", tool_name, e
-            )
-            CLI_LOGGER.error(
-                "Cannot reach persistproc server on port %d. Make sure it is running (`persistproc serve`) or specify the correct port with --port or PERSISTPROC_PORT.",
-                port,
-            )
 
 
 class ITool(abc.ABC):
@@ -148,7 +82,7 @@ class ITool(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def call_with_args(self, args: Namespace, port: int) -> None:
+    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
         """Execute the tool's CLI command."""
         ...
 
@@ -206,7 +140,7 @@ class StartProcessTool(ITool):
         parser.add_argument("command_", metavar="COMMAND", help="The command to run.")
         parser.add_argument("args", nargs="*", help="Arguments to the command")
 
-    def call_with_args(self, args: Namespace, port: int) -> None:
+    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
         # Construct the command string from command and args
         if args.args:
             command = shlex.join([args.command_] + args.args)
@@ -219,7 +153,7 @@ class StartProcessTool(ITool):
             "environment": dict(os.environ),
             "label": getattr(args, "label", None),
         }
-        _make_mcp_request(self.name, port, payload)
+        execute_mcp_request(self.name, port, payload, format)
 
 
 class ListProcessesTool(ITool):
@@ -246,8 +180,8 @@ class ListProcessesTool(ITool):
     def build_subparser(self, parser: ArgumentParser) -> None:
         pass
 
-    def call_with_args(self, args: Namespace, port: int) -> None:
-        _make_mcp_request(self.name, port)
+    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
+        execute_mcp_request(self.name, port, format=format)
 
 
 class GetProcessStatusTool(ITool):
@@ -303,7 +237,7 @@ class GetProcessStatusTool(ITool):
             help="The working directory for the process.",
         )
 
-    def call_with_args(self, args: Namespace, port: int) -> None:
+    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
         pid, command_or_label = _parse_target_to_pid_or_command_or_label(
             args.target, args.args
         )
@@ -312,7 +246,7 @@ class GetProcessStatusTool(ITool):
             "command_or_label": command_or_label,
             "working_directory": args.working_directory,
         }
-        _make_mcp_request(self.name, port, payload)
+        execute_mcp_request(self.name, port, payload, format)
 
 
 class StopProcessTool(ITool):
@@ -379,7 +313,7 @@ class StopProcessTool(ITool):
             "--force", action="store_true", help="Force stop the process."
         )
 
-    def call_with_args(self, args: Namespace, port: int) -> None:
+    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
         pid, command_or_label = _parse_target_to_pid_or_command_or_label(
             args.target, args.args
         )
@@ -389,7 +323,7 @@ class StopProcessTool(ITool):
             "working_directory": args.working_directory,
             "force": args.force,
         }
-        _make_mcp_request(self.name, args.port, payload)
+        execute_mcp_request(self.name, port, payload, format)
 
 
 class RestartProcessTool(ITool):
@@ -450,7 +384,7 @@ class RestartProcessTool(ITool):
             help="The working directory for the process.",
         )
 
-    def call_with_args(self, args: Namespace, port: int) -> None:
+    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
         pid, command_or_label = _parse_target_to_pid_or_command_or_label(
             args.target, args.args
         )
@@ -460,7 +394,7 @@ class RestartProcessTool(ITool):
             "command_or_label": command_or_label,
             "working_directory": args.working_directory,
         }
-        _make_mcp_request(self.name, port, payload)
+        execute_mcp_request(self.name, port, payload, format)
 
 
 class GetProcessOutputTool(ITool):
@@ -551,7 +485,7 @@ class GetProcessOutputTool(ITool):
             help="The working directory for the process.",
         )
 
-    def call_with_args(self, args: Namespace, port: int) -> None:
+    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
         pid, command_or_label = _parse_target_to_pid_or_command_or_label(
             args.target, args.args
         )
@@ -565,7 +499,7 @@ class GetProcessOutputTool(ITool):
             "before_time": args.before_time,
             "since_time": args.since_time,
         }
-        _make_mcp_request(self.name, port, payload)
+        execute_mcp_request(self.name, port, payload, format)
 
 
 class GetProcessLogPathsTool(ITool):
@@ -621,7 +555,7 @@ class GetProcessLogPathsTool(ITool):
             help="The working directory for the process.",
         )
 
-    def call_with_args(self, args: Namespace, port: int) -> None:
+    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
         pid, command_or_label = _parse_target_to_pid_or_command_or_label(
             args.target, args.args
         )
@@ -631,7 +565,7 @@ class GetProcessLogPathsTool(ITool):
             "command_or_label": command_or_label,
             "working_directory": args.working_directory,
         }
-        _make_mcp_request(self.name, port, payload)
+        execute_mcp_request(self.name, port, payload, format)
 
 
 class KillPersistprocTool(ITool):
@@ -661,8 +595,8 @@ class KillPersistprocTool(ITool):
     def build_subparser(self, parser: ArgumentParser) -> None:
         pass
 
-    def call_with_args(self, args: Namespace, port: int) -> None:
-        _make_mcp_request(self.name, port)
+    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
+        execute_mcp_request(self.name, port, format=format)
 
 
 ALL_TOOL_CLASSES = [

@@ -16,9 +16,9 @@ from persistproc.tools import (
     RestartProcessTool,
     StartProcessTool,
     StopProcessTool,
-    _make_mcp_request,
     _parse_target_to_pid_or_command_or_label,
 )
+from persistproc.mcp_client_utils import execute_mcp_request
 
 
 class TestParseTargetToPidOrCommandOrLabel:
@@ -56,9 +56,9 @@ class TestParseTargetToPidOrCommandOrLabel:
 class TestMCPRequest:
     """Test the MCP request helper function."""
 
-    @patch("persistproc.tools.make_client")
+    @patch("persistproc.mcp_client_utils.make_client")
     @patch("persistproc.tools.asyncio.run")
-    def test_make_mcp_request_success(self, mock_asyncio_run, mock_make_client):
+    def testexecute_mcp_request_success(self, mock_asyncio_run, mock_make_client):
         """Test successful MCP request."""
         # Setup mock client
         mock_client = AsyncMock()
@@ -78,29 +78,31 @@ class TestMCPRequest:
 
         # Mock print to capture output
         with patch("builtins.print") as mock_print:
-            _make_mcp_request("test_tool", 8947, {"param": "value"})
+            execute_mcp_request("test_tool", 8947, {"param": "value"})
 
             # Verify print was called with JSON response
             mock_print.assert_called_once_with('{\n  "result": "success"\n}')
 
-    @patch("persistproc.tools.make_client")
+    @patch("persistproc.mcp_client_utils.make_client")
     @patch("persistproc.tools.asyncio.run")
-    def test_make_mcp_request_connection_error(
+    def testexecute_mcp_request_connection_error(
         self, mock_asyncio_run, mock_make_client
     ):
         """Test MCP request with connection error."""
         mock_asyncio_run.side_effect = ConnectionError("Connection failed")
 
         with patch("persistproc.tools.CLI_LOGGER") as mock_logger:
-            _make_mcp_request("test_tool", 8947)
+            execute_mcp_request("test_tool", 8947)
             mock_logger.error.assert_called_with(
                 "Cannot connect to persistproc server on port %d. Start it with 'persistproc serve'.",
                 8947,
             )
 
-    @patch("persistproc.tools.make_client")
+    @patch("persistproc.mcp_client_utils.make_client")
     @patch("persistproc.tools.asyncio.run")
-    def test_make_mcp_request_error_response(self, mock_asyncio_run, mock_make_client):
+    def testexecute_mcp_request_error_response(
+        self, mock_asyncio_run, mock_make_client
+    ):
         """Test MCP request with error in response."""
         # Setup mock client that returns error
         mock_client = AsyncMock()
@@ -120,7 +122,7 @@ class TestMCPRequest:
             patch("builtins.print") as mock_print,
             patch("persistproc.tools.CLI_LOGGER") as mock_logger,
         ):
-            _make_mcp_request("test_tool", 8947)
+            execute_mcp_request("test_tool", 8947)
 
             # Verify error was logged and JSON was still printed
             mock_print.assert_called_once()
@@ -167,7 +169,7 @@ class TestStartProcessTool:
         assert any("--label" in args for args in call_args)
         assert any("command_" in args for args in call_args)
 
-    @patch("persistproc.tools._make_mcp_request")
+    @patch("persistproc.tools.execute_mcp_request")
     def test_call_with_args(self, mock_mcp_request):
         """Test CLI execution."""
         tool = StartProcessTool()
@@ -190,9 +192,10 @@ class TestStartProcessTool:
                 "environment": {"TEST_VAR": "value"},
                 "label": "test-label",
             },
+            "json",
         )
 
-    @patch("persistproc.tools._make_mcp_request")
+    @patch("persistproc.tools.execute_mcp_request")
     def test_call_with_args_no_extra_args(self, mock_mcp_request):
         """Test CLI execution with single command."""
         tool = StartProcessTool()
@@ -233,7 +236,7 @@ class TestListProcessesTool:
         # Should not add any arguments
         mock_parser.add_argument.assert_not_called()
 
-    @patch("persistproc.tools._make_mcp_request")
+    @patch("persistproc.tools.execute_mcp_request")
     def test_call_with_args(self, mock_mcp_request):
         """Test CLI execution."""
         tool = ListProcessesTool()
@@ -241,7 +244,7 @@ class TestListProcessesTool:
 
         tool.call_with_args(args, 8947)
 
-        mock_mcp_request.assert_called_once_with("list", 8947)
+        mock_mcp_request.assert_called_once_with("list", 8947, format="json")
 
 
 class TestGetProcessStatusTool:
@@ -262,7 +265,7 @@ class TestGetProcessStatusTool:
             pid=123, command_or_label="python", working_directory=Path("/tmp")
         )
 
-    @patch("persistproc.tools._make_mcp_request")
+    @patch("persistproc.tools.execute_mcp_request")
     @patch("persistproc.tools._parse_target_to_pid_or_command_or_label")
     def test_call_with_args(self, mock_parse, mock_mcp_request):
         """Test CLI execution."""
@@ -278,6 +281,7 @@ class TestGetProcessStatusTool:
             "status",
             8947,
             {"pid": 123, "command_or_label": None, "working_directory": "/tmp"},
+            "json",
         )
 
 
@@ -308,7 +312,7 @@ class TestStopProcessTool:
             label="test",
         )
 
-    @patch("persistproc.tools._make_mcp_request")
+    @patch("persistproc.tools.execute_mcp_request")
     @patch("persistproc.tools._parse_target_to_pid_or_command_or_label")
     def test_call_with_args(self, mock_parse, mock_mcp_request):
         """Test CLI execution."""
@@ -335,6 +339,7 @@ class TestStopProcessTool:
                 "working_directory": "/tmp",
                 "force": True,
             },
+            "json",
         )
 
 
