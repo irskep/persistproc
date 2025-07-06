@@ -59,7 +59,7 @@ def bump_version(version: str, bump_type: str) -> str:
 def update_file(file_path: Path, pattern: str, replacement: str) -> None:
     """Update a file with regex pattern replacement."""
     content = file_path.read_text()
-    new_content = re.sub(pattern, replacement, content)
+    new_content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
 
     if content == new_content:
         raise ValueError(f"Pattern not found in {file_path}")
