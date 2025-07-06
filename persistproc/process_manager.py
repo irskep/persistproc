@@ -5,6 +5,7 @@ import os
 import shlex
 import signal
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -169,7 +170,10 @@ class ProcessManager:  # noqa: D101
                 close_fds=True,
                 # Put the child in a different process group so a SIGINT will
                 # kill only the child, not the whole process group.
-                preexec_fn=os.setsid if os.name != "nt" else None,
+                preexec_fn=os.setsid if sys.platform != "win32" else None,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                if sys.platform == "win32"
+                else 0,
             )
         except FileNotFoundError as exc:
             return StartProcessResult(
@@ -291,10 +295,10 @@ class ProcessManager:  # noqa: D101
         if ent.status != "running":
             return StopProcessResult(error=f"Process {pid_to_stop} is not running")
 
-        # Send SIGTERM first for graceful shutdown
+        # Send termination signal first for graceful shutdown
         try:
-            self._send_signal(pid_to_stop, signal.SIGTERM)
-            logger.debug("Sent SIGTERM to pid=%s", pid_to_stop)
+            self._send_signal(pid_to_stop, "TERM")
+            logger.debug("Sent termination signal to pid=%s", pid_to_stop)
         except ProcessLookupError:
             # Process already gone
             pass
@@ -302,10 +306,10 @@ class ProcessManager:  # noqa: D101
         timeout = 8.0  # XXX TIMEOUT – graceful wait
         exited = self._wait_for_exit(ent.proc, timeout)
         if not exited and not force:
-            # Escalate to SIGKILL once and wait briefly.
+            # Escalate to kill signal once and wait briefly.
             try:
-                self._send_signal(pid_to_stop, signal.SIGKILL)
-                logger.warning("Escalated to SIGKILL pid=%s", pid_to_stop)
+                self._send_signal(pid_to_stop, "KILL")
+                logger.warning("Escalated to kill signal pid=%s", pid_to_stop)
             except ProcessLookupError:
                 pass  # Process vanished between checks.
 
@@ -642,7 +646,10 @@ class ProcessManager:  # noqa: D101
         def _kill_server():
             time.sleep(0.1)  # Brief delay to allow response to be sent
             logger.info("event=kill_persistproc_terminating_server pid=%s", server_pid)
-            os.kill(server_pid, signal.SIGTERM)
+            if sys.platform == "win32":
+                os.kill(server_pid, signal.SIGTERM)
+            else:
+                os.kill(server_pid, signal.SIGTERM)
 
         threading.Thread(target=_kill_server, daemon=True).start()
 
@@ -759,9 +766,30 @@ class ProcessManager:  # noqa: D101
 
     # ------------------ signal helpers ------------------
 
-    @staticmethod
-    def _send_signal(pid: int, sig: signal.Signals) -> None:  # noqa: D401
-        os.killpg(os.getpgid(pid), sig)  # type: ignore[arg-type]
+    def _send_signal(self, pid: int, sig_type: str) -> None:  # noqa: D401
+        """Send termination signal cross-platform."""
+        ent = self._storage.get_process_snapshot(pid)
+        if ent is None or ent.proc is None:
+            # Fallback to OS kill if we don't have process object
+            if sys.platform == "win32":
+                import signal as sig_module
+
+                if sig_type == "TERM":
+                    os.kill(pid, sig_module.SIGTERM)
+                elif sig_type == "KILL":
+                    os.kill(pid, sig_module.SIGTERM)  # Windows doesn't have SIGKILL
+            else:
+                if sig_type == "TERM":
+                    os.killpg(os.getpgid(pid), signal.SIGTERM)
+                elif sig_type == "KILL":
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+            return
+
+        # Use subprocess methods when available (preferred)
+        if sig_type == "TERM":
+            ent.proc.terminate()
+        elif sig_type == "KILL":
+            ent.proc.kill()
 
     @staticmethod
     def _wait_for_exit(proc: subprocess.Popen | None, timeout: float) -> bool:  # noqa: D401

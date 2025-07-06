@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "persistproc"
 version = "0.1.1"
-description = "A shared process layer for the modern, multi-agent development workflow (Unix-only)."
+description = "A shared process layer for the modern, multi-agent development workflow."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -19,6 +19,7 @@ classifiers = [
     "Operating System :: POSIX",
     "Operating System :: MacOS",
     "Operating System :: Unix",
+    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
