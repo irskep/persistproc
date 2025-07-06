@@ -35,11 +35,37 @@ def start_persistproc() -> subprocess.Popen[str]:
         try:
             # Test direct imports to catch import errors early
             print("✅ Windows import test passed - persistproc module loaded")
+
+            # Test CLI invocation directly to see specific failure
+            print("Testing CLI command directly...")
+            cli_test = subprocess.run(
+                ["python", "-m", "persistproc", "-vv", "serve"],
+                capture_output=True,
+                text=True,
+                timeout=5,  # Short timeout since we expect it to fail quickly
+            )
+            if cli_test.returncode != 0:
+                print(f"❌ CLI test failed with code {cli_test.returncode}")
+                print(f"STDOUT: {cli_test.stdout}")
+                print(f"STDERR: {cli_test.stderr}")
+                raise RuntimeError(
+                    f"Windows CLI test failed - server command exits with code {cli_test.returncode}:\n"
+                    f"STDOUT: {cli_test.stdout}\n"
+                    f"STDERR: {cli_test.stderr}\n"
+                    f"This indicates a runtime issue during server startup"
+                )
+            else:
+                print(
+                    "❓ CLI test succeeded unexpectedly - this should have failed quickly"
+                )
+
+        except subprocess.TimeoutExpired:
+            print("⏰ CLI test timed out after 5s - server may be starting normally")
         except Exception as e:
             raise RuntimeError(
-                f"Windows import failed - persistproc module cannot be loaded:\n"
+                f"Windows diagnostic failed:\n"
                 f"Error: {type(e).__name__}: {e}\n"
-                f"This indicates missing dependencies or import path issues on Windows"
+                f"This indicates startup issues on Windows"
             ) from e
 
     # Cross-platform process creation
