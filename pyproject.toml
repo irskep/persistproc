@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "persistproc"
 version = "0.1.1"
-description = "A shared process layer for the modern, multi-agent development workflow (Unix-only)."
+description = "A shared process layer for the modern, multi-agent development workflow."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -38,6 +38,7 @@ dev = [
     "pytest>=7.0", 
     "pytest-asyncio>=0.21", 
     "pytest-cov>=4.0",
+    "pytest-timeout>=2.1.0",
     "pytest-xdist",
     "pre-commit>=3.0.0",
     "uvicorn>=0.35.0",
