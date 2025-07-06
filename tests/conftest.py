@@ -156,6 +156,11 @@ def _persistproc_env(monkeypatch):
     port = _choose_free_port()
     monkeypatch.setenv(ENV_PORT, str(port))
 
+    # ------------------------------------------------------------------
+    # Format – ensure tests get JSON output for parsing
+    # ------------------------------------------------------------------
+    monkeypatch.setenv("PERSISTPROC_FORMAT", "json")
+
     yield
 
     # Cleanup: monkeypatch context manager restores env automatically.

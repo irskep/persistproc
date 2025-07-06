@@ -44,6 +44,7 @@ class ToolAction:
     args: Namespace
     tool: Any
     port: int
+    format: str
 
 
 @dataclass
@@ -154,6 +155,12 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
             action="count",
             default=argparse.SUPPRESS,
             help="Decrease verbosity. Passing -q once will show only warnings and errors.",
+        )
+        p.add_argument(
+            "--format",
+            choices=["text", "json"],
+            default=os.environ.get("PERSISTPROC_FORMAT", "text"),
+            help="Output format (default: text; env: $PERSISTPROC_FORMAT)",
         )
 
     add_common_args(common_parser)
@@ -306,6 +313,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
     port_val = getattr(args, "port", get_default_port())
     data_dir_val = getattr(args, "data_dir", get_default_data_dir())
     verbose_val = getattr(args, "verbose", 0) - getattr(args, "quiet", 0)
+    format_val = getattr(args, "format", "text")
 
     action: CLIAction
     if args.command == "serve":
@@ -330,7 +338,7 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
         if not hasattr(args, "port"):
             args.port = port_val
         tool = tools_by_name[args.command]
-        action = ToolAction(args=args, tool=tool, port=port_val)
+        action = ToolAction(args=args, tool=tool, port=port_val, format=format_val)
     else:
         parser.print_help()
         sys.exit(1)
@@ -359,7 +367,7 @@ def handle_cli_action(action: CLIAction, metadata: CLIMetadata) -> None:
             label=action.label,
         )
     elif isinstance(action, ToolAction):
-        action.tool.call_with_args(action.args, action.port)
+        action.tool.call_with_args(action.args, action.port, action.format)
 
 
 def cli() -> None:
