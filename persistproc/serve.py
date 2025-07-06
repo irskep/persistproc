@@ -3,9 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from rich import print, print_json
-
 from fastmcp import FastMCP
+from rich import print, print_json
 
 from .console import console
 from .logging_utils import CLI_LOGGER, get_is_quiet
@@ -22,7 +21,7 @@ def _build_app(pm: ProcessManager) -> FastMCP:  # noqa: D401 – helper
 
     app = FastMCP(
         "persistproc",
-        "Manage long-running processes and read their output",
+        "Manage long-running processes and read their output. Full documentation is available at https://steveasleep.com/persistproc-mcp/.",
     )
 
     for tool_cls in ALL_TOOL_CLASSES:
