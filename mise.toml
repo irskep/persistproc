@@ -13,4 +13,5 @@ lint = { run = "sh -c 'uv run ruff check . --fix && uv run ruff format .'", desc
 "lint:format" = { run = "uv run ruff format .", description = "Format code" }
 test = { run = "uv run pytest -n auto --dist=worksteal", description = "Run tests with parallel execution" }
 "test:serial" = { run = "uv run pytest", description = "Run tests serially (for debugging)" }
-"test:cov" = { run = "uv run pytest -n auto --dist=worksteal --cov=persistproc --cov-report=html", description = "Run tests with coverage report" } 
+"test:cov" = { run = "uv run pytest -n auto --dist=worksteal --cov=persistproc --cov-report=html", description = "Run tests with coverage report" }
+"bump-version" = { run = "scripts/bump-version", description = "Bump version (--patch by default, supports --minor, --major)" } 
