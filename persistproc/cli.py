@@ -223,20 +223,29 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
         snake = tool.name  # canonical spelling in help
         kebab = tool.name.replace("_", "-")  # accepted alias
 
+        # Special aliases for specific commands
+        special_aliases = []
+        if snake == "list":
+            special_aliases.append("ls")
+
         # Create **one** sub-parser (canonical) and register alias via `aliases=` so it
         # does not appear twice in `--help` output.
         if snake not in subparsers.choices:
+            all_aliases = [kebab] if kebab != snake else []
+            all_aliases.extend(special_aliases)
             p_tool = subparsers.add_parser(
                 snake,
                 help=tool.cli_description,
                 parents=[common_parser],
-                aliases=[kebab] if kebab != snake else [],
+                aliases=all_aliases,
             )
             tool.build_subparser(p_tool)
 
         # Map both spellings to the same tool object for later lookup.
         tools_by_name[snake] = tool
         tools_by_name[kebab] = tool
+        for alias in special_aliases:
+            tools_by_name[alias] = tool
 
     # Argument parsing
     if not argv:
