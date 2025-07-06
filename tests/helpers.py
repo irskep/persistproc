@@ -30,6 +30,18 @@ def start_persistproc() -> subprocess.Popen[str]:
     """Start persistproc server in the background and wait until ready."""
     cmd = ["python", "-m", "persistproc", "-vv", "serve"]
 
+    # First try direct imports on Windows to diagnose startup issues
+    if os.name == "nt":
+        try:
+            # Test direct imports to catch import errors early
+            print("✅ Windows import test passed - persistproc module loaded")
+        except Exception as e:
+            raise RuntimeError(
+                f"Windows import failed - persistproc module cannot be loaded:\n"
+                f"Error: {type(e).__name__}: {e}\n"
+                f"This indicates missing dependencies or import path issues on Windows"
+            ) from e
+
     # Cross-platform process creation
     kwargs = {
         "text": True,
