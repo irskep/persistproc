@@ -409,6 +409,9 @@ class ProcessManager:  # noqa: D101
             label=original_entry.label,
         )
 
+        if start_res.error is not None:
+            return RestartProcessResult(error=start_res.error)
+
         logger.debug(
             "event=restart pid_old=%s pid_new=%s", pid_to_restart, start_res.pid
         )
