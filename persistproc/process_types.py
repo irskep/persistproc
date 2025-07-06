@@ -53,6 +53,8 @@ class ProcessInfo:
     working_directory: str
     status: str
     label: str
+    start_time: str | None = None
+    end_time: str | None = None
 
 
 @dataclass
