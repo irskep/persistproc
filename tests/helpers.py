@@ -22,13 +22,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     """Invoke the persistproc CLI synchronously and capture output."""
-    cmd = ["python", "-m", "persistproc", "-vv", *args]
+    cmd = ["uv", "run", "python", "-m", "persistproc", "-vv", *args]
     return subprocess.run(cmd, text=True, capture_output=True, check=False)
 
 
 def start_persistproc() -> subprocess.Popen[str]:
     """Start persistproc server in the background and wait until ready."""
-    cmd = ["python", "-m", "persistproc", "-vv", "serve"]
+    cmd = ["uv", "run", "python", "-m", "persistproc", "-vv", "serve"]
 
     # First try direct imports on Windows to diagnose startup issues
     if os.name == "nt":
@@ -39,7 +39,7 @@ def start_persistproc() -> subprocess.Popen[str]:
             # Test CLI invocation directly to see specific failure
             print("Testing CLI command directly...")
             cli_test = subprocess.run(
-                ["python", "-m", "persistproc", "-vv", "serve"],
+                ["uv", "run", "python", "-m", "persistproc", "-vv", "serve"],
                 capture_output=True,
                 text=True,
                 timeout=5,  # Short timeout since we expect it to fail quickly
@@ -194,6 +194,8 @@ def start_run(cmd_tokens: list[str], *, on_exit: str = "stop") -> subprocess.Pop
     """
 
     cli_cmd = [
+        "uv",
+        "run",
         "python",
         "-m",
         "persistproc",
