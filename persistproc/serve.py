@@ -21,7 +21,7 @@ def _build_app(pm: ProcessManager) -> FastMCP:  # noqa: D401 – helper
 
     app = FastMCP(
         "persistproc",
-        "Manage long-running processes and read their output. Full documentation is available at https://steveasleep.com/persistproc-mcp/.",
+        "Manage long-running processes and read their output. Full documentation is available at https://steveasleep.com/persistproc/.",
     )
 
     for tool_cls in ALL_TOOL_CLASSES:

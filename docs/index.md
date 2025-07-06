@@ -82,7 +82,7 @@ graph TB
 > **What if my processes are started by another system?**
 >
 > Then your best bet is to write log files to a predictable location and tell the agent where they are,
-> rather than trying to use persistproc. Or, you can follow [this issue on GitHub](https://github.com/irskep/persistproc-mcp/issues/25).
+> rather than trying to use persistproc. Or, you can follow [this issue on GitHub](https://github.com/irskep/persistproc/issues/25).
 >
 > Currently, persistproc is most useful when you want your agent to be able to _manage_ processes, not
 > just see their output.

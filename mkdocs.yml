@@ -1,8 +1,8 @@
-site_name: persistproc Documentation
+site_name: persistproc documentation
 site_description: A shared process layer for the modern, multi-agent development workflow
-site_url: https://persistproc.readthedocs.io/
-repo_url: https://github.com/irskep/persistproc-mcp
-repo_name: irskep/persistproc-mcp
+site_url: https://steveasleep.com/persistproc/
+repo_url: https://github.com/irskep/persistproc
+repo_name: irskep/persistproc
 
 nav:
   - Home: index.md
@@ -72,7 +72,7 @@ plugins:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/irskep/persistproc-mcp
+      link: https://github.com/irskep/persistproc
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/persistproc/
   version:
