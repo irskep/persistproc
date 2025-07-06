@@ -30,7 +30,7 @@ def start_persistproc() -> subprocess.Popen[str]:
     """Start persistproc server in the background and wait until ready."""
     cmd = ["python", "-m", "persistproc", "-vv", "serve"]
 
-    # Cross-platform process creation with enhanced Windows isolation
+    # Cross-platform process creation
     kwargs = {
         "text": True,
         "stdout": subprocess.PIPE,
@@ -39,13 +39,10 @@ def start_persistproc() -> subprocess.Popen[str]:
 
     if os.name == "nt":
         # Windows: Enhanced isolation to prevent pytest-xdist worker crashes
+        # CREATE_NO_WINDOW prevents console windows from appearing
         kwargs["creationflags"] = (
-            subprocess.CREATE_NEW_PROCESS_GROUP
-            | subprocess.DETACHED_PROCESS
-            | subprocess.CREATE_NEW_CONSOLE
+            subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         )
-        # Additional Windows isolation
-        kwargs["close_fds"] = True
     else:
         # Unix-like: Use start_new_session
         kwargs["start_new_session"] = True
@@ -170,7 +167,7 @@ def start_run(cmd_tokens: list[str], *, on_exit: str = "stop") -> subprocess.Pop
         *cmd_tokens,
     ]
 
-    # Cross-platform process creation with enhanced Windows isolation
+    # Cross-platform process creation
     kwargs = {
         "text": True,
         "stdout": subprocess.PIPE,
@@ -179,13 +176,10 @@ def start_run(cmd_tokens: list[str], *, on_exit: str = "stop") -> subprocess.Pop
 
     if os.name == "nt":
         # Windows: Enhanced isolation to prevent pytest-xdist worker crashes
+        # CREATE_NO_WINDOW prevents console windows from appearing
         kwargs["creationflags"] = (
-            subprocess.CREATE_NEW_PROCESS_GROUP
-            | subprocess.DETACHED_PROCESS
-            | subprocess.CREATE_NEW_CONSOLE
+            subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         )
-        # Additional Windows isolation
-        kwargs["close_fds"] = True
     else:
         # Unix-like: Use start_new_session
         kwargs["start_new_session"] = True
