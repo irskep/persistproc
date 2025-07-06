@@ -155,7 +155,7 @@ Once your agent is connected, you can ask it to manage your processes. Assuming 
 
 ## Development
 
-Run persistproc in a fully configured virtualenv with `./pp`. Run other commands such as `pytest` in a virtualenv with `./run-in-venv.sh`.
+Run persistproc in a fully configured virtualenv with `./pp`. Run other commands such as `pytest` in a virtualenv with `uv run`.
 
 ## License
 

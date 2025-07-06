@@ -33,7 +33,21 @@ def get_help_text(command):
     filtered_stderr_lines = [
         line
         for line in result.stderr.splitlines()
-        if not ("Installing dependencies..." in line or "Audited" in line)
+        if not any(
+            phrase in line
+            for phrase in [
+                "Installing dependencies...",
+                "Audited",
+                "Resolved",
+                "Building",
+                "Built",
+                "Prepared",
+                "Uninstalled",
+                "Installed",
+                "packages in",
+                "package in",
+            ]
+        )
     ]
     if filtered_stderr_lines:
         output += "\n" + "\n".join(filtered_stderr_lines)
