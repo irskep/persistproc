@@ -96,14 +96,14 @@ The server exposes the following tools:
 
 | Tool | Description |
 | --- | --- |
-| `start(command: str, working_directory: str, environment: dict = None, label: str = None)` | Start a new long-running process. |
-| `list()` | List all managed processes and their status. |
-| `status(pid: int = None, command_or_label: str = None, working_directory: str = None)` | Get the detailed status of a specific process. |
-| `stop(pid: int = None, command_or_label: str = None, working_directory: str = None, force: bool = False, label: str = None)` | Stop a running process. |
-| `restart(pid: int = None, command_or_label: str = None, working_directory: str = None)` | Stops a process and starts it again with the same parameters. |
-| `output(pid: int = None, command_or_label: str = None, stream: str = "combined", lines: int = None, before_time: str = None, since_time: str = None, working_directory: str = None)` | Retrieve captured output from a process. |
-| `get_log_paths(pid: int = None, command_or_label: str = None, working_directory: str = None)` | Get the paths to the log files for a specific process. |
-| `kill_persistproc()` | Kill all managed processes and get the PID of the persistproc server. |
+| start | Start a new long-running process. |
+| list | List all managed processes and their status. |
+| status | Get the detailed status of a specific process. |
+| stop | Stop a running process. |
+| restart | Stops a process and starts it again with the same parameters. |
+| output | Retrieve captured output from a process. |
+| get_log_paths | Get the paths to the log files for a specific process. |
+| kill_persistproc | Kill all managed processes and get the PID of the persistproc server. |
 
 ## Getting started
 
