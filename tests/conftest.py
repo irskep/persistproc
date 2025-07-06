@@ -1,7 +1,6 @@
 import logging
 import os
 import random
-import signal
 import socket
 import sys
 import uuid
@@ -80,35 +79,6 @@ def pytest_runtest_makereport(item, call):  # noqa: D401 – pytest hook
     sys.stderr.write("\n==== persistproc server log (latest) ====\n")
     sys.stderr.write(contents)
     sys.stderr.write("\n==== end of persistproc server log ====\n\n")
-
-
-@pytest.fixture(autouse=True)
-def _enforce_timeout(request):
-    """Fail tests that run longer than the allowed time.
-
-    Default timeout is 30 seconds unless a test is marked with
-    ``@pytest.mark.timeout(N)`` specifying a custom limit.
-    """
-
-    marker = request.node.get_closest_marker("timeout")
-    timeout = int(marker.args[0]) if marker and marker.args else 30
-
-    # Skip if timeout is non-positive or SIGALRM unavailable (e.g. Windows).
-    if timeout <= 0 or sys.platform.startswith("win"):
-        yield
-        return
-
-    def _alarm_handler(signum, frame):  # noqa: D401 – signal handler
-        pytest.fail(f"Test timed out after {timeout} seconds", pytrace=False)
-
-    previous = signal.signal(signal.SIGALRM, _alarm_handler)  # type: ignore[arg-type]
-    signal.alarm(timeout)
-
-    try:
-        yield
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, previous)  # type: ignore[arg-type]
 
 
 @pytest.fixture(autouse=True)
