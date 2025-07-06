@@ -159,11 +159,6 @@ def main() -> None:
         print("   - pyproject.toml")
         print("   - persistproc/__init__.py")
         print("   - uv.lock")
-        print()
-        print("💡 Next steps:")
-        print("   1. Update CHANGELOG.md")
-        print(f"   2. Create tag: git tag v{new_version}")
-        print("   3. Push: git push origin main --tags")
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
