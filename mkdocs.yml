@@ -65,6 +65,8 @@ plugins:
 
 nav:
   - Home: index.md
+  - Tools and commands: tools.md
+  - Labels: labels.md
 
 extra:
   social:
