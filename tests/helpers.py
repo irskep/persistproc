@@ -62,9 +62,9 @@ def start_persistproc() -> subprocess.Popen[str]:
 
         # Check if process died
         if proc.poll() is not None:
-            stdout, stderr = proc.communicate()
+            stdout, _ = proc.communicate()
             raise RuntimeError(
-                f"persistproc server exited early with code {proc.returncode}: {stdout}"
+                f"persistproc server exited early with code {proc.returncode}:\nOUTPUT: {stdout}"
             )
 
         line = proc.stdout.readline()
