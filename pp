@@ -15,12 +15,23 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 # Change to the script's directory to ensure relative paths work correctly for setup
 cd "$SCRIPT_DIR"
 
-# Use mise to sync dependencies if available, otherwise fall back to uv directly
-if command -v mise &> /dev/null; then
-  mise deps:sync
+# Check if this is a help command to suppress mise output
+if [[ " $* " =~ " --help " ]]; then
+  # For help commands, run mise silently
+  if command -v mise &> /dev/null; then
+    mise deps:sync > /dev/null 2>&1
+  else
+    # Fallback: use uv directly, silently
+    uv sync --extra docs --extra dev > /dev/null 2>&1
+  fi
 else
-  # Fallback: use uv directly
-  uv sync --extra docs --extra dev
+  # Use mise to sync dependencies if available, otherwise fall back to uv directly
+  if command -v mise &> /dev/null; then
+    mise deps:sync
+  else
+    # Fallback: use uv directly
+    uv sync --extra docs --extra dev
+  fi
 fi
 
 # Change back to the original directory before running the user's command

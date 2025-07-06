@@ -8,6 +8,7 @@ nav:
   - Home: index.md
   - tools.md
   - labels.md
+  - Changelog: CHANGELOG.md
 
 theme:
   name: material

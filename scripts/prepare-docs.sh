@@ -4,6 +4,9 @@ set -e
 # Copy README.md to docs/index.md
 cp README.md docs/index.md
 
+# Copy CHANGELOG.md to docs/
+cp CHANGELOG.md docs/
+
 # Remove the 'full docs:' link line
 sed -i.bak '/> Full docs:/d' docs/index.md
 
