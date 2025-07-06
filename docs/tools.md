@@ -11,15 +11,20 @@ Starts the server. Necessary for everything else to work. `persistproc` with no 
 
 <!-- persistproc serve --help -->
 ```
-usage: persistproc serve [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q] [--format {text,json}]
+usage: persistproc serve [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                         [--format {text,json}]
 
 options:
   -h, --help            show this help message and exit
   --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
-  --data-dir DATA_DIR   Data directory (default: ~/Library/Application Support/persistproc; env: $PERSISTPROC_DATA_DIR)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
   -v, --verbose         Increase verbosity; you can use -vv for more
-  -q, --quiet           Decrease verbosity. Passing -q once will show only warnings and errors.
-  --format {text,json}  Output format (default: text; env: $PERSISTPROC_FORMAT)
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
 ```
 
 ### Examples
@@ -32,27 +37,37 @@ Ensures a process is running, reproduces its stdout+stderr output on stdout, and
 
 <!-- persistproc run --help -->
 ```
-usage: persistproc run [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q] [--format {text,json}] [--fresh] [--on-exit {ask,stop,detach}] [--raw]
-                       [--label LABEL]
+usage: persistproc run [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                       [--format {text,json}] [--fresh]
+                       [--on-exit {ask,stop,detach}] [--raw] [--label LABEL]
                        program [args ...]
 
 positional arguments:
-  program               The program to run (e.g. 'python' or 'ls'). If the string contains spaces, it will be shell-split unless additional
-                        arguments are provided separately.
+  program               The program to run (e.g. 'python' or 'ls'). If the
+                        string contains spaces, it will be shell-split unless
+                        additional arguments are provided separately.
   args                  Arguments to the program
 
 options:
   -h, --help            show this help message and exit
   --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
-  --data-dir DATA_DIR   Data directory (default: ~/Library/Application Support/persistproc; env: $PERSISTPROC_DATA_DIR)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
   -v, --verbose         Increase verbosity; you can use -vv for more
-  -q, --quiet           Decrease verbosity. Passing -q once will show only warnings and errors.
-  --format {text,json}  Output format (default: text; env: $PERSISTPROC_FORMAT)
-  --fresh               Stop an existing running instance of the same command before starting a new one.
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+  --fresh               Stop an existing running instance of the same command
+                        before starting a new one.
   --on-exit {ask,stop,detach}
-                        Behaviour when you press Ctrl+C: ask (default), stop the process, or detach and leave it running.
-  --raw                 Show raw timestamped log lines (default strips ISO timestamps).
-  --label LABEL         Custom label for the process (default: '<command> in <working_directory>').
+                        Behaviour when you press Ctrl+C: ask (default), stop
+                        the process, or detach and leave it running.
+  --raw                 Show raw timestamped log lines (default strips ISO
+                        timestamps).
+  --label LABEL         Custom label for the process (default: '<command> in
+                        <working_directory>').
 ```
 
 ### Examples
@@ -61,9 +76,13 @@ TBD
 
 ## `start`
 
-<!-- persistproc serve --help -->
+Start a new process.
+
+<!-- persistproc start --help -->
 ```
-usage: persistproc start [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q] [--format {text,json}] [--working-directory WORKING_DIRECTORY]
+usage: persistproc start [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                         [--format {text,json}]
+                         [--working-directory WORKING_DIRECTORY]
                          [--label LABEL]
                          COMMAND [args ...]
 
@@ -74,11 +93,253 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
-  --data-dir DATA_DIR   Data directory (default: ~/Library/Application Support/persistproc; env: $PERSISTPROC_DATA_DIR)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
   -v, --verbose         Increase verbosity; you can use -vv for more
-  -q, --quiet           Decrease verbosity. Passing -q once will show only warnings and errors.
-  --format {text,json}  Output format (default: text; env: $PERSISTPROC_FORMAT)
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
   --working-directory WORKING_DIRECTORY
                         The working directory for the process.
-  --label LABEL         Custom label for the process (default: '<command> in <working_directory>').
+  --label LABEL         Custom label for the process (default: '<command> in
+                        <working_directory>').
 ```
+
+### Examples
+
+TBD
+
+## `list`
+
+List all managed processes and their status.
+
+<!-- persistproc list --help -->
+```
+usage: persistproc list [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                        [--format {text,json}]
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+```
+
+### Examples
+
+TBD
+
+## `status`
+
+Get the detailed status of a specific process.
+
+<!-- persistproc status --help -->
+```
+usage: persistproc status [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                          [--format {text,json}]
+                          [--working-directory WORKING_DIRECTORY]
+                          TARGET [args ...]
+
+positional arguments:
+  TARGET                The PID, label, or command to get status for.
+  args                  Arguments to the command
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+  --working-directory WORKING_DIRECTORY
+                        The working directory for the process.
+```
+
+### Examples
+
+TBD
+
+## `stop`
+
+Stop a running process.
+
+<!-- persistproc stop --help -->
+```
+usage: persistproc stop [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                        [--format {text,json}]
+                        [--working-directory WORKING_DIRECTORY] [--force]
+                        TARGET [args ...]
+
+positional arguments:
+  TARGET                The PID, label, or command to stop.
+  args                  Arguments to the command
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+  --working-directory WORKING_DIRECTORY
+                        The working directory for the process.
+  --force               Force stop the process.
+```
+
+### Examples
+
+TBD
+
+## `restart`
+
+Stops a process and starts it again with the same arguments and working directory.
+
+<!-- persistproc restart --help -->
+```
+usage: persistproc restart [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                           [--format {text,json}]
+                           [--working-directory WORKING_DIRECTORY]
+                           TARGET [args ...]
+
+positional arguments:
+  TARGET                The PID, label, or command to restart.
+  args
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+  --working-directory WORKING_DIRECTORY
+                        The working directory for the process.
+```
+
+### Examples
+
+TBD
+
+## `output`
+
+Retrieve captured output from a process.
+
+<!-- persistproc output --help -->
+```
+usage: persistproc output [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                          [--format {text,json}]
+                          [--stream {stdout,stderr,combined}] [--lines LINES]
+                          [--before-time BEFORE_TIME]
+                          [--since-time SINCE_TIME]
+                          [--working-directory WORKING_DIRECTORY]
+                          TARGET [args ...]
+
+positional arguments:
+  TARGET                The PID, label, or command to get output for.
+  args                  Arguments to the command
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+  --stream {stdout,stderr,combined}
+                        The output stream to read.
+  --lines LINES         The number of lines to retrieve.
+  --before-time BEFORE_TIME
+                        Retrieve logs before this timestamp.
+  --since-time SINCE_TIME
+                        Retrieve logs since this timestamp.
+  --working-directory WORKING_DIRECTORY
+                        The working directory for the process.
+```
+
+### Examples
+
+TBD
+
+## `get_log_paths`
+
+Get the paths to the log files for a specific process.
+
+<!-- persistproc get_log_paths --help -->
+```
+usage: persistproc get_log_paths [-h] [--port PORT] [--data-dir DATA_DIR] [-v]
+                                 [-q] [--format {text,json}]
+                                 [--working-directory WORKING_DIRECTORY]
+                                 TARGET [args ...]
+
+positional arguments:
+  TARGET                The PID, label, or command to get log paths for.
+  args                  Arguments to the command
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+  --working-directory WORKING_DIRECTORY
+                        The working directory for the process.
+```
+
+### Examples
+
+TBD
+
+## `kill_persistproc`
+
+Kill all managed processes and get the PID of the persistproc server.
+
+<!-- persistproc kill_persistproc --help -->
+```
+usage: persistproc kill_persistproc [-h] [--port PORT] [--data-dir DATA_DIR]
+                                    [-v] [-q] [--format {text,json}]
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+```
+
+### Examples
+
+TBD

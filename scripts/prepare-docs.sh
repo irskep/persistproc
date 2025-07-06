@@ -14,4 +14,9 @@ sed -i.bak '/License: MIT/a\
 # Remove the backup file
 rm docs/index.md.bak
 
-echo "✅ README.md copied to docs/index.md with 'full docs:' link removed and coverage badge added" 
+echo "✅ Coverage badge generated"
+
+# Update the help text in the docs
+python scripts/update_docs_help.py
+
+echo "✅ Help text updated in docs/tools.md" 
