@@ -1,11 +1,14 @@
 # Tools and commands
 
-Operations available on the command line but not as MCP tools are marked "(command-line only)". This only applies to things that don't make sense for an agent to do, such as starting the server.
+This page documents all persistproc commands and their usage. Most commands are available both from the command line and as MCP tools for agents, with a few exceptions noted below.
 
-!!! note "What is a tool?"
+!!! info "What is a tool?"
     persistproc is primarily an MCP server, but all its tools are accessible to you on the command line. This page will discuss each tool in its command line form. The agent has access to the exact same functionality, just through a different mechanism for calling the tools.
 
-## `serve` (command-line only)
+## `serve`
+
+!!! note "Command-line only"
+    This command is only available from the command line, not as an MCP tool. It doesn't make sense for an agent to start the server.
 
 Starts the server. Necessary for everything else to work. `persistproc` with no subcommands is an alias for `persistproc serve`.
 
@@ -29,9 +32,28 @@ options:
 
 ### Examples
 
-TBD
+Start the server with default settings:
 
-## `run` (command-line only)
+```bash
+persistproc serve
+```
+
+Customize the port:
+
+```bash
+persistproc serve --port 9000
+```
+
+Enable verbose logging:
+
+```bash
+persistproc serve -v
+```
+
+## `run`
+
+!!! note "Command-line only"
+    This command is only available from the command line, not as an MCP tool. Agents should use the `start` tool instead.
 
 Ensures a process is running, reproduces its stdout+stderr output on stdout, and lets you kill the process when you Ctrl+C. Most of the time, you can take any command and put `persistproc run` in front of it to magically run it via `persistproc`. (There are some exceptions; see examples below for when you need `--`.)
 
@@ -72,7 +94,47 @@ options:
 
 ### Examples
 
-TBD
+Most commands work without any special syntax:
+
+```bash
+persistproc run npm run dev
+persistproc run python -m http.server 8080
+```
+
+When your command has flags that conflict with persistproc's own flags, use `--` to separate them:
+
+```bash
+persistproc run -- echo -v "verbose output"
+persistproc run -- ls -v
+```
+
+You can also pass commands as shell-escaped strings:
+
+```bash
+persistproc run 'echo "Hello World"'
+```
+
+Use labels to identify complex processes more easily:
+
+```bash
+persistproc run --label "api-server" 'python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug'
+```
+
+The `--fresh` flag stops any existing instance before starting:
+
+```bash
+persistproc run --fresh npm run dev
+```
+
+Control what happens when you press Ctrl+C (default is to ask):
+
+```bash
+# Stop the process when you exit
+persistproc run --on-exit stop npm run dev
+
+# Leave process running when you exit
+persistproc run --on-exit detach npm run dev
+```
 
 ## `start`
 
@@ -109,7 +171,37 @@ options:
 
 ### Examples
 
-TBD
+Basic usage:
+
+```bash
+persistproc start npm run dev
+persistproc start python -m http.server 8080
+```
+
+Unlike `run`, the `start` command doesn't stream output, so you typically don't need `--` for flag conflicts:
+
+```bash
+persistproc start echo -v "verbose output"
+```
+
+Specify a working directory:
+
+```bash
+persistproc start --working-directory /path/to/project npm run dev
+```
+
+Use shell-escaped strings for complex commands:
+
+```bash
+persistproc start 'echo "Hello World"'
+persistproc start 'bash -c "cd /tmp && python -m http.server 9000"'
+```
+
+Add a custom label for complex commands:
+
+```bash
+persistproc start --label "worker-pool" 'celery -A myapp worker --loglevel=info --concurrency=4 --queues=high_priority,low_priority'
+```
 
 ## `list`
 
@@ -135,7 +227,16 @@ options:
 
 ### Examples
 
-TBD
+```bash
+persistproc list
+```
+
+Get more detailed output or different formats:
+
+```bash
+persistproc list -v
+persistproc list --format json
+```
 
 ## `status`
 
@@ -169,7 +270,25 @@ options:
 
 ### Examples
 
-TBD
+Get status by PID, command, or label:
+
+```bash
+persistproc status 12345
+persistproc status npm run dev
+persistproc status "my-dev-server"
+```
+
+Add working directory context when matching by command:
+
+```bash
+persistproc status --working-directory /path/to/project npm run dev
+```
+
+Get structured output:
+
+```bash
+persistproc status --format json 12345
+```
 
 ## `stop`
 
@@ -204,7 +323,25 @@ options:
 
 ### Examples
 
-TBD
+Stop a process by PID, command, or label:
+
+```bash
+persistproc stop 12345
+persistproc stop npm run dev
+persistproc stop "my-dev-server"
+```
+
+Add working directory context when matching by command:
+
+```bash
+persistproc stop --working-directory /path/to/project npm run dev
+```
+
+Force stop if the process doesn't respond to normal termination:
+
+```bash
+persistproc stop --force 12345
+```
 
 ## `restart`
 
@@ -238,7 +375,19 @@ options:
 
 ### Examples
 
-TBD
+Restart a process by PID, command, or label:
+
+```bash
+persistproc restart 12345
+persistproc restart npm run dev
+persistproc restart "my-dev-server"
+```
+
+Add working directory context when matching by command:
+
+```bash
+persistproc restart --working-directory /path/to/project npm run dev
+```
 
 ## `output`
 
@@ -282,7 +431,40 @@ options:
 
 ### Examples
 
-TBD
+Get recent output from a process:
+
+```bash
+persistproc output 12345
+persistproc output npm run dev
+persistproc output "my-dev-server"
+```
+
+Specify which output stream to read:
+
+```bash
+persistproc output --stream stderr 12345
+persistproc output --stream stdout 12345
+persistproc output --stream combined 12345
+```
+
+Limit the number of lines:
+
+```bash
+persistproc output --lines 50 12345
+```
+
+Get output from a specific time range:
+
+```bash
+persistproc output --since-time "2024-01-01T10:00:00" 12345
+persistproc output --before-time "2024-01-01T12:00:00" 12345
+```
+
+Specify working directory context when matching by command:
+
+```bash
+persistproc output --working-directory /path/to/project npm run dev
+```
 
 ## `get_log_paths`
 
@@ -316,7 +498,19 @@ options:
 
 ### Examples
 
-TBD
+Get log file paths by PID, command, or label:
+
+```bash
+persistproc get_log_paths 12345
+persistproc get_log_paths npm run dev
+persistproc get_log_paths "my-dev-server"
+```
+
+Add working directory context when matching by command:
+
+```bash
+persistproc get_log_paths --working-directory /path/to/project npm run dev
+```
 
 ## `kill_persistproc`
 
@@ -342,4 +536,12 @@ options:
 
 ### Examples
 
-TBD
+```bash
+persistproc kill_persistproc
+```
+
+Get structured output showing the server PID:
+
+```bash
+persistproc kill_persistproc --format json
+```
