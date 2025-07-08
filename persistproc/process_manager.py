@@ -21,6 +21,7 @@ from persistproc.process_storage_manager import ProcessStorageManager, _ProcEntr
 from persistproc.process_types import (
     KillPersistprocResult,
     ListProcessesResult,
+    ProcessControlResult,
     ProcessInfo,
     ProcessOutputResult,
     RestartProcessResult,
@@ -394,6 +395,172 @@ class ProcessManager:  # noqa: D101
         )
 
         return RestartProcessResult(pid=start_res.pid)
+
+    def ctrl(
+        self,
+        action: str,
+        pid: int | None = None,
+        command_or_label: str | None = None,
+        working_directory: str | None = None,
+        environment: dict[str, str] | None = None,
+        force: bool = False,
+        label: str | None = None,
+    ) -> ProcessControlResult:
+        """Unified process control method for start, stop, and restart operations."""
+        logger.debug(
+            "ctrl: action=%s, pid=%s, command_or_label=%s, working_directory=%s",
+            action,
+            pid,
+            command_or_label,
+            working_directory,
+        )
+
+        # Validate action
+        if action not in ["start", "stop", "restart"]:
+            return ProcessControlResult(
+                action=action,
+                error=f"Invalid action '{action}'. Must be 'start', 'stop', or 'restart'.",
+            )
+
+        # Validate arguments based on action
+        if action == "start":
+            if command_or_label is None:
+                return ProcessControlResult(
+                    action=action,
+                    error="command_or_label is required for start action",
+                )
+            if working_directory is None:
+                return ProcessControlResult(
+                    action=action,
+                    error="working_directory is required for start action",
+                )
+            # For start, command_or_label is actually the command to run
+            start_res = self.start(
+                command=command_or_label,
+                working_directory=Path(working_directory),
+                environment=environment,
+                label=label,
+            )
+            if start_res.error:
+                return ProcessControlResult(action=action, error=start_res.error)
+
+            return ProcessControlResult(
+                action=action,
+                pid=start_res.pid,
+                log_stdout=start_res.log_stdout,
+                log_stderr=start_res.log_stderr,
+                log_combined=start_res.log_combined,
+                label=start_res.label,
+            )
+
+        elif action == "stop":
+            stop_res = self.stop(
+                pid=pid,
+                command_or_label=command_or_label,
+                working_directory=Path(working_directory)
+                if working_directory
+                else None,
+                force=force,
+                label=label,
+            )
+            if stop_res.error:
+                return ProcessControlResult(action=action, error=stop_res.error)
+
+            # Get log paths for the stopped process if we have a PID
+            target_pid = pid
+            if target_pid is None and command_or_label is not None:
+                # Find the PID that was stopped
+                process_snapshot = self._storage.get_processes_values_snapshot()
+                target_pid, _ = self._lookup_process_in_snapshot(
+                    process_snapshot,
+                    pid,
+                    label,
+                    command_or_label,
+                    Path(working_directory) if working_directory else None,
+                )
+
+            log_stdout = None
+            log_stderr = None
+            log_combined = None
+            process_label = None
+
+            if target_pid is not None:
+                ent = self._storage.get_process_snapshot(target_pid)
+                if ent is not None and self._log_mgr is not None and ent.log_prefix:
+                    paths = self._log_mgr.paths_for(ent.log_prefix)
+                    log_stdout = str(paths.stdout)
+                    log_stderr = str(paths.stderr)
+                    log_combined = str(paths.combined)
+                    process_label = ent.label
+
+            return ProcessControlResult(
+                action=action,
+                pid=target_pid,
+                previous_exit_code=stop_res.exit_code,
+                log_stdout=log_stdout,
+                log_stderr=log_stderr,
+                log_combined=log_combined,
+                label=process_label,
+            )
+
+        elif action == "restart":
+            # First find the process to get its exit code
+            process_snapshot = self._storage.get_processes_values_snapshot()
+            pid_to_restart, error = self._lookup_process_in_snapshot(
+                process_snapshot,
+                pid,
+                label,
+                command_or_label,
+                Path(working_directory) if working_directory else None,
+            )
+
+            previous_exit_code = None
+            if pid_to_restart is not None:
+                original_entry = self._storage.get_process_snapshot(pid_to_restart)
+                if original_entry is not None and hasattr(original_entry, "exit_code"):
+                    previous_exit_code = original_entry.exit_code
+
+            restart_res = self.restart(
+                pid=pid,
+                command_or_label=command_or_label,
+                working_directory=Path(working_directory)
+                if working_directory
+                else None,
+                label=label,
+            )
+            if restart_res.error:
+                return ProcessControlResult(action=action, error=restart_res.error)
+
+            # Get log paths for the new process
+            log_stdout = None
+            log_stderr = None
+            log_combined = None
+            process_label = None
+
+            if restart_res.pid is not None:
+                ent = self._storage.get_process_snapshot(restart_res.pid)
+                if ent is not None and self._log_mgr is not None and ent.log_prefix:
+                    paths = self._log_mgr.paths_for(ent.log_prefix)
+                    log_stdout = str(paths.stdout)
+                    log_stderr = str(paths.stderr)
+                    log_combined = str(paths.combined)
+                    process_label = ent.label
+
+            return ProcessControlResult(
+                action=action,
+                pid=restart_res.pid,
+                previous_exit_code=previous_exit_code,
+                log_stdout=log_stdout,
+                log_stderr=log_stderr,
+                log_combined=log_combined,
+                label=process_label,
+            )
+
+        # Should never reach here due to validation above
+        return ProcessControlResult(
+            action=action,
+            error=f"Unhandled action '{action}'",
+        )
 
     # ------------------------------------------------------------------
     # Output helpers

@@ -229,6 +229,9 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
         special_aliases = []
         if snake == "list":
             special_aliases.append("ls")
+        elif snake == "ctrl":
+            # No direct aliases for ctrl - the backwards compatibility is handled differently
+            pass
 
         # Create **one** sub-parser (canonical) and register alias via `aliases=` so it
         # does not appear twice in `--help` output.

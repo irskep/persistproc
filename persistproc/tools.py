@@ -14,6 +14,7 @@ from .mcp_client_utils import execute_mcp_request
 from .process_types import (
     KillPersistprocResult,
     ListProcessesResult,
+    ProcessControlResult,
     ProcessOutputResult,
     RestartProcessResult,
     StartProcessResult,
@@ -480,6 +481,161 @@ class GetProcessOutputTool(ITool):
         execute_mcp_request(self.name, port, payload, format)
 
 
+class CtrlProcessTool(ITool):
+    name = "ctrl"
+    cli_description = "Unified process control: start, stop, or restart processes"
+    mcp_description = "Unified process control command that can start, stop, or restart processes. Supports all the parameters of individual commands with action-based dispatch."
+
+    @staticmethod
+    def _apply(
+        process_manager: ProcessManager,
+        action: str,
+        pid: int | None = None,
+        command_or_label: str | None = None,
+        working_directory: str | None = None,
+        environment: dict[str, str] | None = None,
+        force: bool = False,
+        label: str | None = None,
+    ) -> ProcessControlResult:
+        """Unified process control method."""
+        logger.info(
+            "ctrl called – action=%s, pid=%s, command_or_label=%s, working_directory=%s",
+            action,
+            pid,
+            command_or_label,
+            working_directory,
+        )
+        return process_manager.ctrl(
+            action=action,
+            pid=pid,
+            command_or_label=command_or_label,
+            working_directory=working_directory,
+            environment=environment,
+            force=force,
+            label=label,
+        )
+
+    def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
+        def ctrl(
+            action: str,
+            pid: int | None = None,
+            command_or_label: str | None = None,
+            working_directory: str | None = None,
+            environment: dict[str, str] | None = None,
+            force: bool = False,
+            label: str | None = None,
+        ) -> ProcessControlResult:
+            return self._apply(
+                process_manager,
+                action,
+                pid,
+                command_or_label,
+                working_directory,
+                environment,
+                force,
+                label,
+            )
+
+        mcp.add_tool(
+            FunctionTool.from_function(
+                ctrl, name=self.name, description=self.mcp_description
+            )
+        )
+
+    def build_subparser(self, parser: ArgumentParser) -> None:
+        # Options must come first to avoid conflicts with command arguments
+        parser.add_argument(
+            "--working-directory",
+            help="The working directory for the process (required for start, optional for stop/restart)",
+        )
+        parser.add_argument(
+            "--environment",
+            type=str,
+            help="Environment variables as JSON string (start only)",
+        )
+        parser.add_argument(
+            "--force", action="store_true", help="Force stop the process (stop only)"
+        )
+        parser.add_argument(
+            "--label",
+            type=str,
+            help="Custom label for the process",
+        )
+        # Positional arguments come last
+        parser.add_argument(
+            "action",
+            choices=["start", "stop", "restart"],
+            help="The action to perform: start, stop, or restart",
+        )
+        parser.add_argument(
+            "target",
+            metavar="TARGET",
+            help="The PID, label, command, or command to start (depending on action)",
+        )
+        parser.add_argument("args", nargs="*", help="Arguments to the command")
+
+    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
+        pid = None
+        command_or_label = None
+
+        # Parse target and args based on action
+        if args.action == "start":
+            # For start, target is the command and we need working directory
+            if args.target is None:
+                print("Error: TARGET (command) is required for start action")
+                return
+            if args.working_directory is None:
+                # Default to current directory
+                args.working_directory = os.getcwd()
+
+            # Construct command string from target and args
+            if args.args:
+                command_or_label = shlex.join([args.target] + args.args)
+            else:
+                command_or_label = args.target
+        else:
+            # For stop/restart, target can be PID or command/label
+            if args.target is None:
+                print(f"Error: TARGET is required for {args.action} action")
+                return
+
+            # Parse target - could be PID or command with args
+            pid, command_or_label = _parse_target_to_pid_or_command_or_label(
+                args.target, args.args
+            )
+            if pid is not None:
+                # If it's a PID, don't use command_or_label
+                command_or_label = None
+            # If we have a command with multiple words, join them
+            elif args.args:
+                command_or_label = shlex.join([args.target] + args.args)
+            else:
+                command_or_label = args.target
+
+        # Parse environment if provided
+        environment = None
+        if getattr(args, "environment", None):
+            try:
+                import json
+
+                environment = json.loads(args.environment)
+            except json.JSONDecodeError as e:
+                print(f"Error parsing environment JSON: {e}")
+                return
+
+        payload = {
+            "action": args.action,
+            "pid": pid,
+            "command_or_label": command_or_label,
+            "working_directory": args.working_directory,
+            "environment": environment,
+            "force": getattr(args, "force", False),
+            "label": getattr(args, "label", None),
+        }
+
+        execute_mcp_request(self.name, port, payload, format)
+
+
 class KillPersistprocTool(ITool):
     name = "kill_persistproc"
     cli_description = (
@@ -517,5 +673,6 @@ ALL_TOOL_CLASSES = [
     StopProcessTool,
     RestartProcessTool,
     GetProcessOutputTool,
+    CtrlProcessTool,
     KillPersistprocTool,
 ]

@@ -95,6 +95,7 @@ The server exposes the following tools:
 
 | Tool | Description |
 | --- | --- |
+| **ctrl** | **Unified process control: start, stop, or restart processes with a single command.** |
 | start | Start a new long-running process. |
 | list | List all managed processes and their status. Can optionally filter by pid, command, or working directory and provides log paths. |
 | stop | Stop a running process. |

@@ -147,6 +147,254 @@ def test_parse_cli_quiet_flags(mock_setup_logging):
     mock_setup_logging.assert_called_with(-2, get_default_data_dir())
 
 
+# ========================================================================
+# Comprehensive tests for the ctrl unified command
+# ========================================================================
+
+
+def test_parse_cli_ctrl_start_basic(mock_setup_logging):
+    """Test `persistproc ctrl start command`."""
+    action, metadata = parse_cli(["ctrl", "start", "sleep", "10"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "start"
+    assert action.args.target == "sleep"
+    assert action.args.args == ["10"]
+    assert action.args.working_directory is None  # Will default to cwd in tool
+
+
+def test_parse_cli_ctrl_start_with_working_directory(mock_setup_logging, tmp_path):
+    """Test `persistproc ctrl --working-directory /path start command`."""
+    action, metadata = parse_cli(
+        ["ctrl", "--working-directory", str(tmp_path), "start", "npm", "run", "dev"]
+    )
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "start"
+    assert action.args.target == "npm"
+    assert action.args.args == ["run", "dev"]
+    assert action.args.working_directory == str(tmp_path)
+
+
+def test_parse_cli_ctrl_start_with_label(mock_setup_logging):
+    """Test `persistproc ctrl --label mylabel start command`."""
+    action, metadata = parse_cli(
+        ["ctrl", "--label", "myserver", "start", "python -m http.server"]
+    )
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "start"
+    assert action.args.target == "python -m http.server"
+    assert action.args.args == []
+    assert action.args.label == "myserver"
+
+
+def test_parse_cli_ctrl_start_with_environment(mock_setup_logging):
+    """Test `persistproc ctrl --environment '{}' start command`."""
+    action, metadata = parse_cli(
+        ["ctrl", "--environment", '{"DEBUG": "1"}', "start", "python script.py"]
+    )
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "start"
+    assert action.args.target == "python script.py"
+    assert action.args.args == []
+    assert action.args.environment == '{"DEBUG": "1"}'
+
+
+def test_parse_cli_ctrl_stop_by_pid(mock_setup_logging):
+    """Test `persistproc ctrl stop 123`."""
+    action, metadata = parse_cli(["ctrl", "stop", "123"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "stop"
+    assert action.args.target == "123"
+    assert action.args.args == []
+
+
+def test_parse_cli_ctrl_stop_by_command(mock_setup_logging):
+    """Test `persistproc ctrl stop npm run dev`."""
+    action, metadata = parse_cli(["ctrl", "stop", "npm", "run", "dev"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "stop"
+    assert action.args.target == "npm"
+    assert action.args.args == ["run", "dev"]
+
+
+def test_parse_cli_ctrl_stop_with_force(mock_setup_logging):
+    """Test `persistproc ctrl --force stop 123`."""
+    action, metadata = parse_cli(["ctrl", "--force", "stop", "123"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "stop"
+    assert action.args.target == "123"
+    assert action.args.force is True
+
+
+def test_parse_cli_ctrl_stop_with_working_directory(mock_setup_logging, tmp_path):
+    """Test `persistproc ctrl --working-directory /path stop command`."""
+    action, metadata = parse_cli(
+        ["ctrl", "--working-directory", str(tmp_path), "stop", "npm", "run", "dev"]
+    )
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "stop"
+    assert action.args.target == "npm"
+    assert action.args.args == ["run", "dev"]
+    assert action.args.working_directory == str(tmp_path)
+
+
+def test_parse_cli_ctrl_restart_by_pid(mock_setup_logging):
+    """Test `persistproc ctrl restart 123`."""
+    action, metadata = parse_cli(["ctrl", "restart", "123"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "restart"
+    assert action.args.target == "123"
+    assert action.args.args == []
+
+
+def test_parse_cli_ctrl_restart_by_command(mock_setup_logging):
+    """Test `persistproc ctrl restart npm run dev`."""
+    action, metadata = parse_cli(["ctrl", "restart", "npm", "run", "dev"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "restart"
+    assert action.args.target == "npm"
+    assert action.args.args == ["run", "dev"]
+
+
+def test_parse_cli_ctrl_restart_with_label(mock_setup_logging):
+    """Test `persistproc ctrl --label mylabel restart command`."""
+    action, metadata = parse_cli(["ctrl", "--label", "mylabel", "restart", "mycommand"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "restart"
+    assert action.args.target == "mycommand"
+    assert action.args.label == "mylabel"
+
+
+def test_parse_cli_ctrl_restart_with_working_directory(mock_setup_logging, tmp_path):
+    """Test `persistproc ctrl --working-directory /path restart command`."""
+    action, metadata = parse_cli(
+        ["ctrl", "--working-directory", str(tmp_path), "restart", "npm", "run", "dev"]
+    )
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "restart"
+    assert action.args.target == "npm"
+    assert action.args.args == ["run", "dev"]
+    assert action.args.working_directory == str(tmp_path)
+
+
+def test_parse_cli_ctrl_no_action_should_fail(mock_setup_logging):
+    """Test that `persistproc ctrl` without action fails."""
+    with pytest.raises(SystemExit):
+        parse_cli(["ctrl"])
+
+
+def test_parse_cli_ctrl_invalid_action_should_fail(mock_setup_logging):
+    """Test that `persistproc ctrl invalid` fails."""
+    with pytest.raises(SystemExit):
+        parse_cli(["ctrl", "invalid"])
+
+
+def test_parse_cli_ctrl_start_no_target_should_fail(mock_setup_logging):
+    """Test that `persistproc ctrl start` without target fails."""
+    with pytest.raises(SystemExit):
+        parse_cli(["ctrl", "start"])
+
+
+def test_parse_cli_ctrl_stop_no_target_should_fail(mock_setup_logging):
+    """Test that `persistproc ctrl stop` without target fails."""
+    with pytest.raises(SystemExit):
+        parse_cli(["ctrl", "stop"])
+
+
+def test_parse_cli_ctrl_restart_no_target_should_fail(mock_setup_logging):
+    """Test that `persistproc ctrl restart` without target fails."""
+    with pytest.raises(SystemExit):
+        parse_cli(["ctrl", "restart"])
+
+
+# ========================================================================
+# Tests for backwards compatibility - existing commands should still work
+# ========================================================================
+
+
+def test_parse_cli_backwards_compatibility_start(mock_setup_logging):
+    """Test that `persistproc start` still works."""
+    action, metadata = parse_cli(["start", "sleep", "10"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "start"
+    assert action.args.command_ == "sleep"
+    assert action.args.args == ["10"]
+
+
+def test_parse_cli_backwards_compatibility_stop(mock_setup_logging):
+    """Test that `persistproc stop` still works."""
+    action, metadata = parse_cli(["stop", "123"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "stop"
+    assert action.args.target == "123"
+
+
+def test_parse_cli_backwards_compatibility_restart(mock_setup_logging):
+    """Test that `persistproc restart` still works."""
+    action, metadata = parse_cli(["restart", "123"])
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "restart"
+    assert action.args.target == "123"
+
+
+# ========================================================================
+# Test edge cases and complex scenarios
+# ========================================================================
+
+
+def test_parse_cli_ctrl_with_complex_command(mock_setup_logging):
+    """Test ctrl with complex multi-word commands."""
+    action, metadata = parse_cli(
+        ["ctrl", "start", "python -u -m uvicorn app:main --host 0.0.0.0 --port 8000"]
+    )
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "start"
+    assert (
+        action.args.target == "python -u -m uvicorn app:main --host 0.0.0.0 --port 8000"
+    )
+    assert action.args.args == []
+
+
+def test_parse_cli_ctrl_with_all_options(mock_setup_logging, tmp_path):
+    """Test ctrl start with all possible options."""
+    action, metadata = parse_cli(
+        [
+            "ctrl",
+            "--working-directory",
+            str(tmp_path),
+            "--environment",
+            '{"DEBUG": "1"}',
+            "--label",
+            "myprocess",
+            "--format",
+            "json",
+            "start",
+            "python script.py",
+        ]
+    )
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "ctrl"
+    assert action.args.action == "start"
+    assert action.args.target == "python script.py"
+    assert action.args.args == []
+    assert action.args.working_directory == str(tmp_path)
+    assert action.args.environment == '{"DEBUG": "1"}'
+    assert action.args.label == "myprocess"
+    assert action.format == "json"
+
+
 def test_root_help_displays_subcommands(mock_setup_logging):
     """`persistproc --help` lists available sub-commands (serve, run, etc.)."""
     # Test that help flag triggers SystemExit (which argparse does for help)

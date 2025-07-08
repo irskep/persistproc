@@ -5,6 +5,117 @@ This page documents all persistproc commands and their usage. Most commands are 
 !!! info "What is a tool?"
     persistproc is primarily an MCP server, but all its tools are accessible to you on the command line. This page will discuss each tool in its command line form. The agent has access to the exact same functionality, just through a different mechanism for calling the tools.
 
+## `ctrl`
+
+**Unified process control** - the recommended way to manage processes with persistproc. This command provides a single interface for start, stop, and restart operations with consistent arguments and output format.
+
+<!-- persistproc ctrl --help -->
+```
+usage: persistproc ctrl [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                        [--format {text,json}] [--working-directory WORKING_DIRECTORY]
+                        [--environment ENVIRONMENT] [--force] [--label LABEL]
+                        {start,stop,restart} TARGET [args ...]
+
+positional arguments:
+  {start,stop,restart}  The action to perform: start, stop, or restart
+  TARGET                The PID, label, command, or command to start (depending on action)
+  args                  Arguments to the command
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+  --working-directory WORKING_DIRECTORY
+                        The working directory for the process (required for start, optional for stop/restart)
+  --environment ENVIRONMENT
+                        Environment variables as JSON string (start only)
+  --force               Force stop the process (stop only)
+  --label LABEL         Custom label for the process
+```
+
+**Examples**
+
+Start a new process:
+
+```bash
+> persistproc ctrl start npm run dev
+Started process with PID: 12345
+Action: start
+Label: npm run dev in /Users/user/myproject
+Stdout log: /Users/user/Library/Application Support/persistproc/logs/12345_stdout.log
+Stderr log: /Users/user/Library/Application Support/persistproc/logs/12345_stderr.log
+Combined log: /Users/user/Library/Application Support/persistproc/logs/12345_combined.log
+```
+
+Start with custom working directory and label:
+
+```bash
+> persistproc ctrl --working-directory /path/to/project --label "api-server" start python -m uvicorn app:main --host 0.0.0.0 --port 8000
+```
+
+Start with environment variables:
+
+```bash
+> persistproc ctrl --environment '{"DEBUG": "1", "PORT": "3000"}' start node server.js
+```
+
+Stop a process by PID:
+
+```bash
+> persistproc ctrl stop 12345
+Action: stop
+PID: 12345
+Previous exit code: 0
+Stdout log: /Users/user/Library/Application Support/persistproc/logs/12345_stdout.log
+Stderr log: /Users/user/Library/Application Support/persistproc/logs/12345_stderr.log
+Combined log: /Users/user/Library/Application Support/persistproc/logs/12345_combined.log
+```
+
+Stop a process by command:
+
+```bash
+> persistproc ctrl stop npm run dev
+> persistproc ctrl --working-directory /path/to/project stop npm run dev
+```
+
+Force stop a process:
+
+```bash
+> persistproc ctrl --force stop 12345
+```
+
+Restart a process:
+
+```bash
+> persistproc ctrl restart 12345
+Action: restart
+PID: 54321
+Previous exit code: 0
+Stdout log: /Users/user/Library/Application Support/persistproc/logs/54321_stdout.log
+Stderr log: /Users/user/Library/Application Support/persistproc/logs/54321_stderr.log
+Combined log: /Users/user/Library/Application Support/persistproc/logs/54321_combined.log
+
+> persistproc ctrl restart npm run dev
+> persistproc ctrl --working-directory /path/to/project restart "my-server-label"
+```
+
+!!! tip "Why use ctrl?"
+    The `ctrl` command provides several advantages over individual commands:
+    
+    - **Unified interface**: One command with consistent options for all operations
+    - **Enhanced output**: Always includes log paths in results for easy access
+    - **Better semantics**: Clear action-based syntax that's easy to understand
+    - **Future-proof**: New features will be added to ctrl first
+    
+    While the individual `start`, `stop`, and `restart` commands remain available for backwards compatibility, `ctrl` is recommended for new workflows.
+
 ## `serve`
 
 !!! note "Command-line only"
