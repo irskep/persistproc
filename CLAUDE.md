@@ -31,6 +31,8 @@ Instead:
 
 **ALWAYS use `git --no-pager diff` for all diffs, never `git diff`.**
 
+If you get a timeout in tests while running locally, it is NOT a "timing issue" or "race condition." It is as REAL BUG. You are running on a fast computer that is not under load. The correct response to a test timeout is to ADD DEBUG LOGGING and THINK HARD.
+
 ## Workflow guidelines
 
 For EVERY programming task assigned, you are NOT FINISHED until you can produce a message in the following format:
