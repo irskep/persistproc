@@ -103,7 +103,7 @@ def test_parse_cli_restart_process_by_pid(mock_setup_logging):
     """Test `persistproc restart 123`."""
     action, metadata = parse_cli(["restart", "123"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "restart"
+    assert action.tool.name == "ctrl"
     assert action.args.target == "123"
     assert not action.args.args
 
@@ -112,7 +112,7 @@ def test_parse_cli_restart_process_by_command(mock_setup_logging):
     """Test `persistproc restart sleep 10`."""
     action, metadata = parse_cli(["restart", "sleep", "10"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "restart"
+    assert action.tool.name == "ctrl"
     assert action.args.target == "sleep"
     assert action.args.args == ["10"]
 
@@ -123,7 +123,7 @@ def test_parse_cli_restart_process_by_command_and_cwd(mock_setup_logging, tmp_pa
         ["restart", "--working-directory", str(tmp_path), "sleep", "10"]
     )
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "restart"
+    assert action.tool.name == "ctrl"
     assert action.args.target == "sleep"
     assert action.args.args == ["10"]
     assert action.args.working_directory == str(tmp_path)
@@ -319,36 +319,6 @@ def test_parse_cli_ctrl_restart_no_target_should_fail(mock_setup_logging):
 
 
 # ========================================================================
-# Tests for backwards compatibility - existing commands should still work
-# ========================================================================
-
-
-def test_parse_cli_backwards_compatibility_start(mock_setup_logging):
-    """Test that `persistproc start` still works."""
-    action, metadata = parse_cli(["start", "sleep", "10"])
-    assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
-    assert action.args.command_ == "sleep"
-    assert action.args.args == ["10"]
-
-
-def test_parse_cli_backwards_compatibility_stop(mock_setup_logging):
-    """Test that `persistproc stop` still works."""
-    action, metadata = parse_cli(["stop", "123"])
-    assert isinstance(action, ToolAction)
-    assert action.tool.name == "stop"
-    assert action.args.target == "123"
-
-
-def test_parse_cli_backwards_compatibility_restart(mock_setup_logging):
-    """Test that `persistproc restart` still works."""
-    action, metadata = parse_cli(["restart", "123"])
-    assert isinstance(action, ToolAction)
-    assert action.tool.name == "restart"
-    assert action.args.target == "123"
-
-
-# ========================================================================
 # Test edge cases and complex scenarios
 # ========================================================================
 
@@ -409,7 +379,7 @@ def test_parse_cli_stop_process_by_pid(mock_setup_logging):
     """Test `persistproc stop 123`."""
     action, metadata = parse_cli(["stop", "123"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "stop"
+    assert action.tool.name == "ctrl"
     assert action.args.target == "123"
     assert not action.args.args
 
@@ -418,7 +388,7 @@ def test_parse_cli_stop_process_by_command(mock_setup_logging):
     """Test `persistproc stop sleep 10`."""
     action, metadata = parse_cli(["stop", "sleep", "10"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "stop"
+    assert action.tool.name == "ctrl"
     assert action.args.target == "sleep"
     assert action.args.args == ["10"]
 
@@ -427,7 +397,7 @@ def test_parse_cli_start_with_label(mock_setup_logging):
     """Test `persistproc start echo hello --label my-label`."""
     action, metadata = parse_cli(["start", "echo", "hello", "--label", "my-label"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "echo"
     assert action.args.args == ["hello"]
     assert action.args.label == "my-label"
@@ -437,7 +407,7 @@ def test_parse_cli_start_without_label(mock_setup_logging):
     """Test `persistproc start echo hello` (no label)."""
     action, metadata = parse_cli(["start", "echo", "hello"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "echo"
     assert action.args.args == ["hello"]
     assert getattr(action.args, "label", None) is None
@@ -523,7 +493,7 @@ def test_parse_cli_start_with_double_dash_separator(mock_setup_logging):
     """Test `persistproc start python -- script.py arg1 arg2`."""
     action, metadata = parse_cli(["start", "python", "--", "script.py", "arg1", "arg2"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "python"
     assert action.args.args == ["script.py", "arg1", "arg2"]
 
@@ -534,7 +504,7 @@ def test_parse_cli_start_with_label_and_separator(mock_setup_logging):
         ["start", "--label", "backend", "python", "--", "-m", "uvicorn", "app:main"]
     )
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "python"
     assert action.args.args == ["-m", "uvicorn", "app:main"]
     assert action.args.label == "backend"
@@ -555,7 +525,7 @@ def test_parse_cli_start_with_working_dir_and_separator(mock_setup_logging):
         ]
     )
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "node"
     assert action.args.args == ["server.js", "--port", "3000"]
     assert action.args.working_directory == "/app"
@@ -565,7 +535,7 @@ def test_parse_cli_start_no_separator_simple(mock_setup_logging):
     """Test `persistproc start echo` - simple command without args."""
     action, metadata = parse_cli(["start", "echo"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "echo"
     assert action.args.args == []
 
@@ -596,7 +566,7 @@ def test_parse_cli_start_command_with_equals_in_args(mock_setup_logging):
         ["start", "python", "--", "script.py", "--config=prod.ini"]
     )
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "python"
     assert action.args.args == ["script.py", "--config=prod.ini"]
 
@@ -640,7 +610,7 @@ def test_parse_cli_start_invalid_flag_without_separator(mock_setup_logging):
     # This parses but probably not what user intended
     action, metadata = parse_cli(["start", "npm", "run", "dev"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "npm"
     assert action.args.args == [
         "run",
@@ -677,7 +647,7 @@ def test_parse_cli_start_with_port_ambiguity(mock_setup_logging):
     # --port is consumed by the global parser, not passed to python!
     action, metadata = parse_cli(["start", "python", "app.py", "--port", "8080"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "python"
     assert action.args.args == ["app.py"]  # --port 8080 was consumed!
     assert action.args.port == 8080  # --port went to persistproc
@@ -687,7 +657,7 @@ def test_parse_cli_start_correct_port_usage(mock_setup_logging):
     """Test correct: `persistproc start python -- app.py --port 8080`."""
     action, metadata = parse_cli(["start", "python", "--", "app.py", "--port", "8080"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "python"
     assert action.args.args == ["app.py", "--port", "8080"]
 
@@ -739,7 +709,7 @@ def test_parse_cli_stop_with_double_dash_separator(mock_setup_logging):
     """Test `persistproc stop python -- -m http.server`."""
     action, metadata = parse_cli(["stop", "python", "--", "-m", "http.server"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "stop"
+    assert action.tool.name == "ctrl"
     assert action.args.target == "python"
     assert action.args.args == ["-m", "http.server"]
 
@@ -755,7 +725,7 @@ def test_parse_cli_restart_with_double_dash_separator(mock_setup_logging):
     """Test `persistproc restart node -- --inspect server.js`."""
     action, metadata = parse_cli(["restart", "node", "--", "--inspect", "server.js"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "restart"
+    assert action.tool.name == "ctrl"
     assert action.args.target == "node"
     assert action.args.args == ["--inspect", "server.js"]
 
@@ -766,7 +736,7 @@ def test_parse_cli_restart_with_working_dir_and_separator(mock_setup_logging):
         ["restart", "--working-directory", "/app", "python", "--", "-m", "myapp"]
     )
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "restart"
+    assert action.tool.name == "ctrl"
     assert action.args.target == "python"
     assert action.args.args == ["-m", "myapp"]
     assert action.args.working_directory == "/app"
@@ -776,7 +746,7 @@ def test_parse_cli_stop_by_label(mock_setup_logging):
     """Test `persistproc stop my-app-label`."""
     action, metadata = parse_cli(["stop", "my-app-label"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "stop"
+    assert action.tool.name == "ctrl"
     assert action.args.target == "my-app-label"
     assert action.args.args == []
 
@@ -785,7 +755,7 @@ def test_parse_cli_restart_by_label(mock_setup_logging):
     """Test `persistproc restart my-app-label`."""
     action, metadata = parse_cli(["restart", "my-app-label"])
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "restart"
+    assert action.tool.name == "ctrl"
     assert action.args.target == "my-app-label"
     assert action.args.args == []
 
@@ -849,7 +819,7 @@ def test_parse_cli_start_mixed_flags_and_args(mock_setup_logging):
         ]
     )
     assert isinstance(action, ToolAction)
-    assert action.tool.name == "start"
+    assert action.tool.name == "ctrl"
     assert action.args.command_ == "python"
     assert action.args.args == ["-m", "uvicorn", "app:main", "--port", "8000"]
     assert action.args.label == "web"

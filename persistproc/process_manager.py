@@ -496,7 +496,7 @@ class ProcessManager:  # noqa: D101
             return ProcessControlResult(
                 action=action,
                 pid=target_pid,
-                previous_exit_code=stop_res.exit_code,
+                exit_code=stop_res.exit_code,
                 log_stdout=log_stdout,
                 log_stderr=log_stderr,
                 log_combined=log_combined,
@@ -514,11 +514,11 @@ class ProcessManager:  # noqa: D101
                 Path(working_directory) if working_directory else None,
             )
 
-            previous_exit_code = None
+            exit_code = None
             if pid_to_restart is not None:
                 original_entry = self._storage.get_process_snapshot(pid_to_restart)
                 if original_entry is not None and hasattr(original_entry, "exit_code"):
-                    previous_exit_code = original_entry.exit_code
+                    exit_code = original_entry.exit_code
 
             restart_res = self.restart(
                 pid=pid,
@@ -549,7 +549,7 @@ class ProcessManager:  # noqa: D101
             return ProcessControlResult(
                 action=action,
                 pid=restart_res.pid,
-                previous_exit_code=previous_exit_code,
+                exit_code=exit_code,
                 log_stdout=log_stdout,
                 log_stderr=log_stderr,
                 log_combined=log_combined,

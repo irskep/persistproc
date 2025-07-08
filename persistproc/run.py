@@ -187,18 +187,21 @@ async def _start_or_get_process_via_mcp(
                 )
 
                 if existing and fresh:
-                    await client.call_tool("stop", {"pid": existing["pid"]})
+                    await client.call_tool(
+                        "ctrl", {"action": "stop", "pid": existing["pid"]}
+                    )
                     existing = None
 
                 if existing is None:
                     start_params = {
-                        "command": command_str,
+                        "action": "start",
+                        "command_or_label": command_str,
                         "working_directory": working_directory,
                         "environment": dict(os.environ),
                     }
                     if label is not None:
                         start_params["label"] = label
-                    start_res = await client.call_tool("start", start_params)
+                    start_res = await client.call_tool("ctrl", start_params)
                     start_info = json.loads(start_res[0].text)
                     if start_info["error"]:
                         CLI_LOGGER.error(start_info["error"])
@@ -235,7 +238,7 @@ async def _stop_process_via_mcp(port: int, pid: int) -> None:  # noqa: D401 – 
     """Best-effort attempt to stop *pid* via MCP."""
     try:
         async with make_client(port) as client:
-            await client.call_tool("stop", {"pid": pid})
+            await client.call_tool("ctrl", {"action": "stop", "pid": pid})
     except Exception as exc:  # pragma: no cover – soft failure
         logger.warning("Failed to stop process %s via MCP: %s", pid, exc)
 

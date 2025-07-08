@@ -1,6 +1,5 @@
 """Unit tests for tools.py using mocks/fakes to avoid real MCP calls."""
 
-import os
 from argparse import Namespace
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,12 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from persistproc.process_manager import ProcessManager
 from persistproc.tools import (
     ALL_TOOL_CLASSES,
+    CtrlProcessTool,
     GetProcessOutputTool,
     KillPersistprocTool,
     ListProcessesTool,
-    RestartProcessTool,
-    StartProcessTool,
-    StopProcessTool,
     _parse_target_to_pid_or_command_or_label,
 )
 from persistproc.mcp_client_utils import execute_mcp_request
@@ -127,89 +124,137 @@ class TestMCPRequest:
             mock_logger.error.assert_called_with("Process not found")
 
 
-class TestStartProcessTool:
-    """Test the StartProcessTool class."""
+class TestCtrlProcessTool:
+    """Test the CtrlProcessTool class."""
 
-    def test_apply_method(self, tmp_path):
-        """Test the _apply static method."""
+    def test_apply_method_start(self, tmp_path):
+        """Test the _apply static method for start action."""
         # Create a mock process manager
         mock_manager = MagicMock(spec=ProcessManager)
         mock_result = MagicMock()
-        mock_manager.start.return_value = mock_result
+        mock_manager.ctrl.return_value = mock_result
 
-        result = StartProcessTool._apply(
+        result = CtrlProcessTool._apply(
             mock_manager,
-            "python -m http.server",
-            str(tmp_path),
-            {"VAR": "value"},
-            "web-server",
-        )
-
-        assert result == mock_result
-        mock_manager.start.assert_called_once_with(
-            command="python -m http.server",
-            working_directory=Path(str(tmp_path)),
+            action="start",
+            command_or_label="python -m http.server",
+            working_directory=str(tmp_path),
             environment={"VAR": "value"},
             label="web-server",
         )
 
+        assert result == mock_result
+        mock_manager.ctrl.assert_called_once_with(
+            action="start",
+            pid=None,
+            command_or_label="python -m http.server",
+            working_directory=str(tmp_path),
+            environment={"VAR": "value"},
+            force=False,
+            label="web-server",
+        )
+
+    def test_apply_method_stop(self):
+        """Test the _apply static method for stop action."""
+        mock_manager = MagicMock(spec=ProcessManager)
+        mock_result = MagicMock()
+        mock_manager.ctrl.return_value = mock_result
+
+        result = CtrlProcessTool._apply(
+            mock_manager,
+            action="stop",
+            pid=123,
+            force=True,
+        )
+
+        assert result == mock_result
+        mock_manager.ctrl.assert_called_once_with(
+            action="stop",
+            pid=123,
+            command_or_label=None,
+            working_directory=None,
+            environment=None,
+            force=True,
+            label=None,
+        )
+
     def test_build_subparser(self):
         """Test CLI subparser configuration."""
-        tool = StartProcessTool()
+        tool = CtrlProcessTool()
         mock_parser = MagicMock()
 
         tool.build_subparser(mock_parser)
 
         # Verify arguments were added
-        assert mock_parser.add_argument.call_count >= 3
+        assert mock_parser.add_argument.call_count >= 6
         call_args = [call[0] for call in mock_parser.add_argument.call_args_list]
         assert any("--working-directory" in args for args in call_args)
+        assert any("--environment" in args for args in call_args)
+        assert any("--force" in args for args in call_args)
         assert any("--label" in args for args in call_args)
-        assert any("command_" in args for args in call_args)
+        assert any("action" in args for args in call_args)
+        assert any("target" in args for args in call_args)
 
     @patch("persistproc.tools.execute_mcp_request")
-    def test_call_with_args(self, mock_mcp_request, tmp_path):
-        """Test CLI execution."""
-        tool = StartProcessTool()
+    def test_call_with_args_ctrl_start(self, mock_mcp_request, tmp_path):
+        """Test CLI execution for ctrl start."""
+        tool = CtrlProcessTool()
         args = Namespace(
-            command_="python",
+            action="start",
+            target="python",
             args=["-m", "http.server"],
             working_directory=str(tmp_path),
             label="test-label",
+            environment=None,
+            force=False,
         )
 
-        with patch.dict(os.environ, {"TEST_VAR": "value"}, clear=True):
-            tool.call_with_args(args, 8947)
+        tool.call_with_args(args, 8947, "json")
 
+        # Verify MCP request was made with correct parameters
         mock_mcp_request.assert_called_once_with(
-            "start",
+            "ctrl",
             8947,
             {
-                "command": "python -m http.server",
+                "action": "start",
+                "pid": None,
+                "command_or_label": "python -m http.server",
                 "working_directory": str(tmp_path),
-                "environment": {"TEST_VAR": "value"},
+                "environment": None,
+                "force": False,
                 "label": "test-label",
             },
             "json",
         )
 
     @patch("persistproc.tools.execute_mcp_request")
-    def test_call_with_args_no_extra_args(self, mock_mcp_request, tmp_path):
-        """Test CLI execution with single command."""
-        tool = StartProcessTool()
+    def test_call_with_args_ctrl_stop_by_pid(self, mock_mcp_request):
+        """Test CLI execution for ctrl stop by PID."""
+        tool = CtrlProcessTool()
         args = Namespace(
-            command_="echo", args=[], working_directory=str(tmp_path), label=None
+            action="stop",
+            target="123",
+            args=[],
+            working_directory=None,
+            force=True,
         )
 
-        with patch.dict(os.environ, {"TEST_VAR": "value"}, clear=True):
-            tool.call_with_args(args, 8947)
+        tool.call_with_args(args, 8947, "json")
 
-        # Verify command is not shell-joined when no args
-        mock_mcp_request.assert_called_once()
-        call_args, call_kwargs = mock_mcp_request.call_args
-        assert call_args[0] == "start"
-        assert call_args[1] == 8947
-        assert call_args[2]["command"] == "echo"
+        mock_mcp_request.assert_called_once_with(
+            "ctrl",
+            8947,
+            {
+                "action": "stop",
+                "pid": 123,
+                "command_or_label": None,
+                "working_directory": None,
+                "environment": None,
+                "force": True,
+                "label": None,
+            },
+            "json",
+        )
 
 
 class TestListProcessesTool:
@@ -292,90 +337,6 @@ class TestListProcessesTool:
         )
 
 
-class TestStopProcessTool:
-    """Test the StopProcessTool class."""
-
-    def test_apply_method(self, tmp_path):
-        """Test the _apply static method."""
-        mock_manager = MagicMock(spec=ProcessManager)
-        mock_result = MagicMock()
-        mock_manager.stop.return_value = mock_result
-
-        result = StopProcessTool._apply(
-            mock_manager,
-            pid=123,
-            command_or_label="python",
-            working_directory=str(tmp_path),
-            force=True,
-            label="test",
-        )
-
-        assert result == mock_result
-        mock_manager.stop.assert_called_once_with(
-            pid=123,
-            command_or_label="python",
-            working_directory=Path(str(tmp_path)),
-            force=True,
-            label="test",
-        )
-
-    @patch("persistproc.tools.execute_mcp_request")
-    @patch("persistproc.tools._parse_target_to_pid_or_command_or_label")
-    def test_call_with_args(self, mock_parse, mock_mcp_request, tmp_path):
-        """Test CLI execution."""
-        mock_parse.return_value = (None, "python script.py")
-
-        tool = StopProcessTool()
-        args = Namespace(
-            target="python",
-            args=["script.py"],
-            working_directory=str(tmp_path),
-            force=True,
-            port=8947,
-        )
-
-        tool.call_with_args(args, 8947)
-
-        mock_parse.assert_called_once_with("python", ["script.py"])
-        mock_mcp_request.assert_called_once_with(
-            "stop",
-            8947,
-            {
-                "pid": None,
-                "command_or_label": "python script.py",
-                "working_directory": str(tmp_path),
-                "force": True,
-            },
-            "json",
-        )
-
-
-class TestRestartProcessTool:
-    """Test the RestartProcessTool class."""
-
-    def test_apply_method(self, tmp_path):
-        """Test the _apply static method."""
-        mock_manager = MagicMock(spec=ProcessManager)
-        mock_result = MagicMock()
-        mock_manager.restart.return_value = mock_result
-
-        result = RestartProcessTool._apply(
-            mock_manager,
-            pid=123,
-            command_or_label="python",
-            working_directory=str(tmp_path),
-            label="test",
-        )
-
-        assert result == mock_result
-        mock_manager.restart.assert_called_once_with(
-            pid=123,
-            command_or_label="python",
-            working_directory=Path(str(tmp_path)),
-            label="test",
-        )
-
-
 class TestGetProcessOutputTool:
     """Test the GetProcessOutputTool class."""
 
@@ -430,14 +391,12 @@ class TestToolCollection:
 
     def test_all_tool_classes_count(self):
         """Test that all expected tools are in the collection."""
-        assert len(ALL_TOOL_CLASSES) == 6
+        assert len(ALL_TOOL_CLASSES) == 4
 
         tool_names = [tool_cls().name for tool_cls in ALL_TOOL_CLASSES]
         expected_names = {
-            "start",
+            "ctrl",
             "list",
-            "stop",
-            "restart",
             "output",
             "kill_persistproc",
         }

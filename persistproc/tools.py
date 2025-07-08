@@ -16,9 +16,6 @@ from .process_types import (
     ListProcessesResult,
     ProcessControlResult,
     ProcessOutputResult,
-    RestartProcessResult,
-    StartProcessResult,
-    StopProcessResult,
     StreamEnum,
 )
 
@@ -84,75 +81,6 @@ class ITool(abc.ABC):
     def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
         """Execute the tool's CLI command."""
         ...
-
-
-class StartProcessTool(ITool):
-    name = "start"
-    cli_description = "Start a new process"
-    mcp_description = "Start a new long-running process. REQUIRED if the process is expected to never terminate. PROHIBITED if the process is short-lived."
-
-    @staticmethod
-    def _apply(
-        process_manager: ProcessManager,
-        command: str,
-        working_directory: str,
-        environment: dict[str, str] | None = None,
-        label: str | None = None,
-    ) -> StartProcessResult:
-        """Start a new long-running process."""
-        logger.info("start called – cmd=%s, cwd=%s", command, working_directory)
-        return process_manager.start(
-            command=command,
-            working_directory=Path(working_directory),
-            environment=environment,
-            label=label,
-        )
-
-    def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
-        def start(
-            command: str,
-            working_directory: str,
-            environment: dict[str, str] | None = None,
-            label: str | None = None,
-        ) -> StartProcessResult:
-            return self._apply(
-                process_manager, command, working_directory, environment, label
-            )
-
-        mcp.add_tool(
-            FunctionTool.from_function(
-                start, name=self.name, description=self.mcp_description
-            )
-        )
-
-    def build_subparser(self, parser: ArgumentParser) -> None:
-        parser.add_argument(
-            "--working-directory",
-            default=os.getcwd(),
-            help="The working directory for the process.",
-        )
-        parser.add_argument(
-            "--label",
-            type=str,
-            help="Custom label for the process (default: '<command> in <working_directory>').",
-        )
-        parser.add_argument("command_", metavar="COMMAND", help="The command to run.")
-        parser.add_argument("args", nargs="*", help="Arguments to the command")
-
-    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
-        # Construct the command string from command and args
-        if args.args:
-            command = shlex.join([args.command_] + args.args)
-        else:
-            command = args.command_
-
-        payload = {
-            "command": command,
-            "working_directory": args.working_directory,
-            "environment": dict(os.environ),
-            "label": getattr(args, "label", None),
-        }
-        execute_mcp_request(self.name, port, payload, format)
 
 
 class ListProcessesTool(ITool):
@@ -226,154 +154,6 @@ class ListProcessesTool(ITool):
             execute_mcp_request(self.name, port, payload, format)
         else:
             execute_mcp_request(self.name, port, format=format)
-
-
-class StopProcessTool(ITool):
-    name = "stop"
-    cli_description = "Stop a running process"
-    mcp_description = "Stop a running process. Blocks until the process is stopped."
-
-    @staticmethod
-    def _apply(
-        process_manager: ProcessManager,
-        pid: int | None = None,
-        command_or_label: str | None = None,
-        working_directory: str | None = None,
-        force: bool = False,
-        label: str | None = None,
-    ) -> StopProcessResult:
-        """Stop a running process by its PID."""
-        logger.info(
-            "stop called for pid=%s command_or_label=%s cwd=%s force=%s",
-            pid,
-            command_or_label,
-            working_directory,
-            force,
-        )
-        return process_manager.stop(
-            pid=pid,
-            command_or_label=command_or_label,
-            working_directory=(Path(working_directory) if working_directory else None),
-            force=force,
-            label=label,
-        )
-
-    def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
-        def stop(
-            pid: int | None = None,
-            command_or_label: str | None = None,
-            working_directory: str | None = None,
-            force: bool = False,
-            label: str | None = None,
-        ) -> StopProcessResult:
-            return self._apply(
-                process_manager, pid, command_or_label, working_directory, force, label
-            )
-
-        mcp.add_tool(
-            FunctionTool.from_function(
-                stop, name=self.name, description=self.mcp_description
-            )
-        )
-
-    def build_subparser(self, parser: ArgumentParser) -> None:
-        parser.add_argument(
-            "target",
-            metavar="TARGET",
-            help="The PID, label, or command to stop.",
-        )
-        parser.add_argument("args", nargs="*", help="Arguments to the command")
-        parser.add_argument(
-            "--working-directory",
-            default=os.getcwd(),
-            help="The working directory for the process.",
-        )
-        parser.add_argument(
-            "--force", action="store_true", help="Force stop the process."
-        )
-
-    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
-        pid, command_or_label = _parse_target_to_pid_or_command_or_label(
-            args.target, args.args
-        )
-        payload = {
-            "pid": pid,
-            "command_or_label": command_or_label,
-            "working_directory": args.working_directory,
-            "force": args.force,
-        }
-        execute_mcp_request(self.name, port, payload, format)
-
-
-class RestartProcessTool(ITool):
-    name = "restart"
-    cli_description = "Stops a process and starts it again with the same arguments and working directory"
-    mcp_description = "Stops a process and starts it again with the same arguments and working directory"
-
-    @staticmethod
-    def _apply(
-        process_manager: ProcessManager,
-        pid: int | None = None,
-        command_or_label: str | None = None,
-        working_directory: str | None = None,
-        label: str | None = None,
-    ) -> RestartProcessResult:
-        """Stops a process and starts it again with the same parameters."""
-        logger.info(
-            "restart called for pid=%s, command_or_label=%s, cwd=%s",
-            pid,
-            command_or_label,
-            working_directory,
-        )
-        return process_manager.restart(
-            pid=pid,
-            command_or_label=command_or_label,
-            working_directory=(Path(working_directory) if working_directory else None),
-            label=label,
-        )
-
-    def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
-        def restart(
-            pid: int | None = None,
-            command_or_label: str | None = None,
-            working_directory: str | None = None,
-            label: str | None = None,
-        ) -> RestartProcessResult:
-            return self._apply(
-                process_manager, pid, command_or_label, working_directory, label
-            )
-
-        mcp.add_tool(
-            FunctionTool.from_function(
-                restart, name=self.name, description=self.mcp_description
-            )
-        )
-
-    def build_subparser(self, parser: ArgumentParser) -> None:
-        parser.add_argument(
-            "target",
-            metavar="TARGET",
-            help="The PID, label, or command to restart.",
-        )
-        # Remaining args will be parsed manually.
-        parser.add_argument("args", nargs="*")
-        parser.add_argument(
-            "--working-directory",
-            default=os.getcwd(),
-            help="The working directory for the process.",
-        )
-
-    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
-        pid, command_or_label = _parse_target_to_pid_or_command_or_label(
-            args.target, args.args
-        )
-
-        payload = {
-            "pid": pid,
-            "command_or_label": command_or_label,
-            "working_directory": args.working_directory,
-        }
-        execute_mcp_request(self.name, port, payload, format)
 
 
 class GetProcessOutputTool(ITool):
@@ -577,26 +357,33 @@ class CtrlProcessTool(ITool):
     def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
         pid = None
         command_or_label = None
+        action = None
 
-        # Parse target and args based on action
-        if args.action == "start":
-            # For start, target is the command and we need working directory
-            if args.target is None:
-                print("Error: TARGET (command) is required for start action")
-                return
+        # Detect if we were called via backwards compatibility alias
+        if hasattr(args, "command_") and hasattr(args, "target"):
+            # This means we have both command_ and target, which shouldn't happen in normal ctrl usage
+            # This indicates a backwards compatibility argument structure issue
+            print("Error: Conflicting argument structure detected")
+            return
+        elif hasattr(args, "command_"):
+            # Backwards compatibility: start command
+            action = "start"
             if args.working_directory is None:
-                # Default to current directory
                 args.working_directory = os.getcwd()
 
-            # Construct command string from target and args
+            # Construct command string from command_ and args
             if args.args:
-                command_or_label = shlex.join([args.target] + args.args)
+                command_or_label = shlex.join([args.command_] + args.args)
             else:
-                command_or_label = args.target
-        else:
-            # For stop/restart, target can be PID or command/label
-            if args.target is None:
-                print(f"Error: TARGET is required for {args.action} action")
+                command_or_label = args.command_
+        elif hasattr(args, "target") and not hasattr(args, "action"):
+            # Backwards compatibility: stop/restart command
+            # Need to determine action from args.command (which is the CLI command name)
+            command_name = getattr(args, "command", "unknown")
+            if command_name in ["stop", "restart"]:
+                action = command_name
+            else:
+                print(f"Error: Unknown backwards compatibility command: {command_name}")
                 return
 
             # Parse target - could be PID or command with args
@@ -606,11 +393,47 @@ class CtrlProcessTool(ITool):
             if pid is not None:
                 # If it's a PID, don't use command_or_label
                 command_or_label = None
-            # If we have a command with multiple words, join them
             elif args.args:
                 command_or_label = shlex.join([args.target] + args.args)
             else:
                 command_or_label = args.target
+        else:
+            # Normal ctrl command handling
+            action = args.action
+
+            # Parse target and args based on action
+            if action == "start":
+                # For start, target is the command and we need working directory
+                if args.target is None:
+                    print("Error: TARGET (command) is required for start action")
+                    return
+                if args.working_directory is None:
+                    # Default to current directory
+                    args.working_directory = os.getcwd()
+
+                # Construct command string from target and args
+                if args.args:
+                    command_or_label = shlex.join([args.target] + args.args)
+                else:
+                    command_or_label = args.target
+            else:
+                # For stop/restart, target can be PID or command/label
+                if args.target is None:
+                    print(f"Error: TARGET is required for {action} action")
+                    return
+
+                # Parse target - could be PID or command with args
+                pid, command_or_label = _parse_target_to_pid_or_command_or_label(
+                    args.target, args.args
+                )
+                if pid is not None:
+                    # If it's a PID, don't use command_or_label
+                    command_or_label = None
+                # If we have a command with multiple words, join them
+                elif args.args:
+                    command_or_label = shlex.join([args.target] + args.args)
+                else:
+                    command_or_label = args.target
 
         # Parse environment if provided
         environment = None
@@ -624,7 +447,7 @@ class CtrlProcessTool(ITool):
                 return
 
         payload = {
-            "action": args.action,
+            "action": action,
             "pid": pid,
             "command_or_label": command_or_label,
             "working_directory": args.working_directory,
@@ -668,11 +491,8 @@ class KillPersistprocTool(ITool):
 
 
 ALL_TOOL_CLASSES = [
-    StartProcessTool,
-    ListProcessesTool,
-    StopProcessTool,
-    RestartProcessTool,
-    GetProcessOutputTool,
     CtrlProcessTool,
+    ListProcessesTool,
+    GetProcessOutputTool,
     KillPersistprocTool,
 ]

@@ -89,7 +89,7 @@ class ProcessControlResult:
 
     action: str  # "start", "stop", or "restart"
     pid: int | None = None  # new PID for start/restart
-    previous_exit_code: int | None = None  # exit code of stopped process for restart
+    exit_code: int | None = None  # exit code of stopped process for stop/restart
     log_stdout: str | None = None  # always included when available
     log_stderr: str | None = None  # always included when available
     log_combined: str | None = None  # always included when available

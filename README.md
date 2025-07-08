@@ -97,10 +97,7 @@ The server exposes the following tools:
 | Tool | Description |
 | --- | --- |
 | **ctrl** | **Unified process control: start, stop, or restart processes with a single command.** |
-| start | Start a new long-running process. |
 | list | List all managed processes and their status. Can optionally filter by pid, command, or working directory and provides log paths. |
-| stop | Stop a running process. |
-| restart | Stops a process and starts it again with the same parameters. |
 | output | Retrieve captured output from a process. |
 | kill_persistproc | Kill all managed processes and get the PID of the persistproc server. |
 
@@ -148,7 +145,7 @@ Once your agent is connected, you can ask it to manage your processes. Assuming 
     *   **Agent**: Calls `list()` and shows you the running `npm run dev` process.
 
 *   **You**: "The web server seems stuck. Can you restart it?"
-    *   **Agent**: Identifies the correct process and calls `restart(pid=12345)`.
+    *   **Agent**: Identifies the correct process and calls `ctrl(action="restart", pid=12345)`.
 
 *   **You**: "Show me any errors from the web server."
     *   **Agent**: Calls `output(pid=12345, stream="stderr")` to retrieve the latest error logs.

@@ -229,9 +229,6 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
         special_aliases = []
         if snake == "list":
             special_aliases.append("ls")
-        elif snake == "ctrl":
-            # No direct aliases for ctrl - the backwards compatibility is handled differently
-            pass
 
         # Create **one** sub-parser (canonical) and register alias via `aliases=` so it
         # does not appear twice in `--help` output.
@@ -251,6 +248,69 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
         tools_by_name[kebab] = tool
         for alias in special_aliases:
             tools_by_name[alias] = tool
+
+        # Create separate backwards compatibility subparsers for start/stop/restart
+        if snake == "ctrl":
+            for old_cmd in ["start", "stop", "restart"]:
+                if old_cmd not in subparsers.choices:
+                    p_compat = subparsers.add_parser(
+                        old_cmd,
+                        help=f"{old_cmd.title()} process (alias for 'ctrl {old_cmd}')",
+                        parents=[common_parser],
+                    )
+
+                    # Configure arguments to match old format
+                    if old_cmd == "start":
+                        p_compat.add_argument(
+                            "--working-directory",
+                            help="The working directory for the process",
+                        )
+                        p_compat.add_argument(
+                            "--environment",
+                            type=str,
+                            help="Environment variables as JSON string",
+                        )
+                        p_compat.add_argument(
+                            "--label",
+                            type=str,
+                            help="Custom label for the process",
+                        )
+                        p_compat.add_argument(
+                            "command_",
+                            metavar="COMMAND",
+                            help="The command to start",
+                        )
+                        p_compat.add_argument(
+                            "args", nargs="*", help="Arguments to the command"
+                        )
+                    else:  # stop, restart
+                        p_compat.add_argument(
+                            "--working-directory",
+                            help="The working directory for the process",
+                        )
+                        p_compat.add_argument(
+                            "target",
+                            metavar="TARGET",
+                            help="The PID, label, or command to stop/restart",
+                        )
+                        p_compat.add_argument(
+                            "args", nargs="*", help="Arguments to the command"
+                        )
+                        if old_cmd == "stop":
+                            p_compat.add_argument(
+                                "--force",
+                                action="store_true",
+                                help="Force stop the process",
+                            )
+                        elif old_cmd == "restart":
+                            p_compat.add_argument(
+                                "--label",
+                                type=str,
+                                help="Custom label for the process",
+                            )
+
+                    # Map to ctrl tool for execution
+                    tools_by_name[old_cmd] = tool
 
     # Argument parsing
     if not argv:
