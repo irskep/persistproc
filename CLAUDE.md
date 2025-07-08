@@ -53,3 +53,7 @@ Web links supporting my changes:
 
 I solemnly swear there are no further steps I can take to verify the changes within the boundaries set for me.
 </ReportFormat>
+
+## Pitfalls
+
+persistproc/run.py has soft, non-type-safe dependencies on other parts of the program. Audit it carefully, especially after changes to persistproc/tools.py.
