@@ -29,6 +29,8 @@ Instead:
 
 **NEVER background a process with an `&` suffix.**
 
+**ALWAYS use `git --no-pager diff` for all diffs, never `git diff`.**
+
 ## Workflow guidelines
 
 For EVERY programming task assigned, you are NOT FINISHED until you can produce a message in the following format:

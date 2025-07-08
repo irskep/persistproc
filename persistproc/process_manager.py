@@ -221,9 +221,17 @@ class ProcessManager:  # noqa: D101
     # Query helpers
     # ------------------------------------------------------------------
 
-    def list(self) -> ListProcessesResult:  # noqa: D401
+    def list(
+        self,
+        pid: int | None = None,
+        command_or_label: str | None = None,
+        working_directory: str | None = None,
+    ) -> ListProcessesResult:  # noqa: D401
         process_snapshot = self._storage.get_processes_values_snapshot()
-        res = [self._to_public_info(ent) for ent in process_snapshot]
+        filtered_snapshot = self._filter_processes(
+            process_snapshot, pid, command_or_label, working_directory
+        )
+        res = [self._to_public_info(ent) for ent in filtered_snapshot]
         return ListProcessesResult(processes=res)
 
     def get_status(
@@ -707,7 +715,60 @@ class ProcessManager:  # noqa: D101
         else:
             return None, f"No process found for '{command_or_label}'"
 
+    def _filter_processes(
+        self,
+        process_snapshot: list[_ProcEntry],
+        pid: int | None = None,
+        command_or_label: str | None = None,
+        working_directory: str | None = None,
+    ) -> list[_ProcEntry]:
+        """Filter process entries based on the provided criteria."""
+        # If no filters provided, return all
+        if pid is None and command_or_label is None and working_directory is None:
+            return process_snapshot
+
+        filtered_snapshot = []
+        for ent in process_snapshot:
+            # Check PID filter
+            if pid is not None and ent.pid != pid:
+                continue
+
+            # Check command_or_label filter (check both label and command)
+            if command_or_label is not None:
+                # First try matching by label
+                if ent.label == command_or_label:
+                    pass  # matches
+                else:
+                    # Try matching by command
+                    try:
+                        if ent.command != shlex.split(command_or_label):
+                            continue
+                    except ValueError:
+                        continue  # Skip if command parsing fails
+
+            # Check working directory filter
+            if (
+                working_directory is not None
+                and ent.working_directory != working_directory
+            ):
+                continue
+
+            filtered_snapshot.append(ent)
+
+        return filtered_snapshot
+
     def _to_public_info(self, ent: _ProcEntry) -> ProcessInfo:  # noqa: D401 – helper
+        # Get log paths if log manager is available and we have a log prefix
+        log_stdout = None
+        log_stderr = None
+        log_combined = None
+
+        if self._log_mgr is not None and ent.log_prefix:
+            paths = self._log_mgr.paths_for(ent.log_prefix)
+            log_stdout = str(paths.stdout)
+            log_stderr = str(paths.stderr)
+            log_combined = str(paths.combined)
+
         return ProcessInfo(
             pid=ent.pid,
             command=ent.command,
@@ -716,6 +777,9 @@ class ProcessManager:  # noqa: D101
             label=ent.label,
             start_time=ent.start_time,
             end_time=ent.exit_time,
+            log_stdout=log_stdout,
+            log_stderr=log_stderr,
+            log_combined=log_combined,
         )
 
     def _monitor_loop(self) -> None:  # noqa: D401 – thread target

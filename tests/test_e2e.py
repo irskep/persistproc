@@ -102,41 +102,47 @@ def test_process_has_output(server):
 
 
 def test_get_process_status(server):
-    """Test status tool."""
+    """Test list tool with PID filter (replaces status tool)."""
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
     start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
-    # Get detailed status
-    status = run_cli("status", str(pid))
+    # Get detailed status using list with PID filter
+    status = run_cli("list", "--pid", str(pid))
     status_data = extract_json(status.stdout)
 
-    assert status_data["pid"] == pid
-    assert status_data["status"] == "running"
-    assert "command" in status_data
-    assert "working_directory" in status_data
-    assert isinstance(status_data["command"], list)
+    assert len(status_data["processes"]) == 1
+    process = status_data["processes"][0]
+    assert process["pid"] == pid
+    assert process["status"] == "running"
+    assert "command" in process
+    assert "working_directory" in process
+    assert isinstance(process["command"], list)
 
     # Cleanup
     run_cli("stop", str(pid))
 
 
 def test_get_process_log_paths(server):
-    """Test get_log_paths tool."""
+    """Test list tool with PID filter for log paths (replaces get_log_paths tool)."""
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
     start = run_cli("start", start_cmd)
     data = extract_json(start.stdout)
     pid = data["pid"]
 
-    # Get log paths
-    paths = run_cli("get-log-paths", str(pid))
+    # Get log paths using list with PID filter
+    paths = run_cli("list", "--pid", str(pid))
     paths_data = extract_json(paths.stdout)
 
-    assert "stdout" in paths_data
-    assert "stderr" in paths_data
-    assert isinstance(paths_data["stdout"], str)
-    assert isinstance(paths_data["stderr"], str)
+    assert len(paths_data["processes"]) == 1
+    process = paths_data["processes"][0]
+    assert "log_stdout" in process
+    assert "log_stderr" in process
+    assert "log_combined" in process
+    assert isinstance(process["log_stdout"], str)
+    assert isinstance(process["log_stderr"], str)
+    assert isinstance(process["log_combined"], str)
 
     # Cleanup
     run_cli("stop", str(pid))
@@ -154,10 +160,12 @@ def test_start_process_with_working_directory(server):
     pid = data["pid"]
 
     # Verify the process started
-    status = run_cli("status", str(pid))
+    status = run_cli("list", "--pid", str(pid))
     status_data = extract_json(status.stdout)
-    assert status_data["pid"] == pid
-    assert "working_directory" in status_data
+    assert len(status_data["processes"]) == 1
+    process = status_data["processes"][0]
+    assert process["pid"] == pid
+    assert "working_directory" in process
 
     # Wait for process to complete naturally
     time.sleep(2)
@@ -172,9 +180,11 @@ def test_start_process_with_environment(server):
     pid = data["pid"]
 
     # Verify the process started
-    status = run_cli("status", str(pid))
+    status = run_cli("list", "--pid", str(pid))
     status_data = extract_json(status.stdout)
-    assert status_data["pid"] == pid
+    assert len(status_data["processes"]) == 1
+    process = status_data["processes"][0]
+    assert process["pid"] == pid
 
     # Wait for process to complete naturally
     time.sleep(2)

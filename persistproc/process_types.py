@@ -55,6 +55,9 @@ class ProcessInfo:
     label: str
     start_time: str | None = None
     end_time: str | None = None
+    log_stdout: str | None = None
+    log_stderr: str | None = None
+    log_combined: str | None = None
 
 
 @dataclass

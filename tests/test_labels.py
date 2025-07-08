@@ -117,12 +117,14 @@ def test_get_status_includes_label(server):
     data = extract_json(start.stdout)
     pid = data["pid"]
 
-    # Get status
-    status = run_cli("status", str(pid))
+    # Get status using list with PID filter
+    status = run_cli("list", "--pid", str(pid))
     status_data = extract_json(status.stdout)
 
     # Verify label is included in status
-    assert status_data["label"] == "status-test-label"
+    assert len(status_data["processes"]) == 1
+    process = status_data["processes"][0]
+    assert process["label"] == "status-test-label"
 
     # Clean up
     run_cli("stop", str(pid))

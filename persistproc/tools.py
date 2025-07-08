@@ -14,9 +14,7 @@ from .mcp_client_utils import execute_mcp_request
 from .process_types import (
     KillPersistprocResult,
     ListProcessesResult,
-    ProcessLogPathsResult,
     ProcessOutputResult,
-    ProcessStatusResult,
     RestartProcessResult,
     StartProcessResult,
     StopProcessResult,
@@ -158,18 +156,38 @@ class StartProcessTool(ITool):
 
 class ListProcessesTool(ITool):
     name = "list"
-    cli_description = "List all managed processes and their status"
-    mcp_description = "List all managed processes and their status"
+    cli_description = "List all managed processes and their status, optionally filtered by pid, command, or working directory"
+    mcp_description = "List all managed processes and their status. Can optionally filter by pid, command_or_label, or working_directory. Returns detailed information including log paths for each process."
 
     @staticmethod
-    def _apply(process_manager: ProcessManager) -> ListProcessesResult:
-        """List all managed processes and their status."""
-        logger.debug("list called")
-        return process_manager.list()
+    def _apply(
+        process_manager: ProcessManager,
+        pid: int | None = None,
+        command_or_label: str | None = None,
+        working_directory: str | None = None,
+    ) -> ListProcessesResult:
+        """List all managed processes and their status, optionally filtered."""
+        logger.debug(
+            "list called with pid=%s, command_or_label=%s, working_directory=%s",
+            pid,
+            command_or_label,
+            working_directory,
+        )
+        return process_manager.list(
+            pid=pid,
+            command_or_label=command_or_label,
+            working_directory=working_directory,
+        )
 
     def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
-        def list() -> ListProcessesResult:
-            return self._apply(process_manager)
+        def list(
+            pid: int | None = None,
+            command_or_label: str | None = None,
+            working_directory: str | None = None,
+        ) -> ListProcessesResult:
+            return self._apply(
+                process_manager, pid, command_or_label, working_directory
+            )
 
         mcp.add_tool(
             FunctionTool.from_function(
@@ -178,75 +196,35 @@ class ListProcessesTool(ITool):
         )
 
     def build_subparser(self, parser: ArgumentParser) -> None:
-        pass
-
-    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
-        execute_mcp_request(self.name, port, format=format)
-
-
-class GetProcessStatusTool(ITool):
-    name = "status"
-    cli_description = "Get the detailed status of a specific process"
-    mcp_description = "Get the detailed information about a specific process, including its PID, command, working directory, and status."
-
-    @staticmethod
-    def _apply(
-        process_manager: ProcessManager,
-        pid: int | None = None,
-        command_or_label: str | None = None,
-        working_directory: str | None = None,
-    ) -> ProcessStatusResult:
-        """Get the detailed status of a specific process."""
-        logger.debug(
-            "status called for pid=%s, command_or_label=%s",
-            pid,
-            command_or_label,
-        )
-        return process_manager.get_status(
-            pid=pid,
-            command_or_label=command_or_label,
-            working_directory=Path(working_directory) if working_directory else None,
-        )
-
-    def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
-        def status(
-            pid: int | None = None,
-            command_or_label: str | None = None,
-            working_directory: str | None = None,
-        ) -> ProcessStatusResult:
-            return self._apply(
-                process_manager, pid, command_or_label, working_directory
-            )
-
-        mcp.add_tool(
-            FunctionTool.from_function(
-                status, name=self.name, description=self.mcp_description
-            )
-        )
-
-    def build_subparser(self, parser: ArgumentParser) -> None:
         parser.add_argument(
-            "target",
-            metavar="TARGET",
-            help="The PID, label, or command to get status for.",
+            "--pid",
+            type=int,
+            help="Filter by process ID",
         )
-        parser.add_argument("args", nargs="*", help="Arguments to the command")
+        parser.add_argument(
+            "--command-or-label",
+            type=str,
+            help="Filter by command or label",
+        )
         parser.add_argument(
             "--working-directory",
-            default=os.getcwd(),
-            help="The working directory for the process.",
+            type=str,
+            help="Filter by working directory",
         )
 
     def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
-        pid, command_or_label = _parse_target_to_pid_or_command_or_label(
-            args.target, args.args
-        )
-        payload = {
-            "pid": pid,
-            "command_or_label": command_or_label,
-            "working_directory": args.working_directory,
-        }
-        execute_mcp_request(self.name, port, payload, format)
+        payload = {}
+        if getattr(args, "pid", None) is not None:
+            payload["pid"] = args.pid
+        if getattr(args, "command_or_label", None) is not None:
+            payload["command_or_label"] = args.command_or_label
+        if getattr(args, "working_directory", None) is not None:
+            payload["working_directory"] = args.working_directory
+
+        if payload:
+            execute_mcp_request(self.name, port, payload, format)
+        else:
+            execute_mcp_request(self.name, port, format=format)
 
 
 class StopProcessTool(ITool):
@@ -502,72 +480,6 @@ class GetProcessOutputTool(ITool):
         execute_mcp_request(self.name, port, payload, format)
 
 
-class GetProcessLogPathsTool(ITool):
-    name = "get_log_paths"
-    cli_description = "Get the paths to the log files for a specific process"
-    mcp_description = "Get the paths on the filesystem to the log files for a specific process. Usually you want 'output' instead."
-
-    @staticmethod
-    def _apply(
-        process_manager: ProcessManager,
-        pid: int | None = None,
-        command_or_label: str | None = None,
-        working_directory: str | None = None,
-    ) -> ProcessLogPathsResult:
-        """Get the paths to the log files for a specific process."""
-        logger.debug(
-            "get_log_paths called for pid=%s, command_or_label=%s",
-            pid,
-            command_or_label,
-        )
-        return process_manager.get_log_paths(
-            pid=pid,
-            command_or_label=command_or_label,
-            working_directory=Path(working_directory) if working_directory else None,
-        )
-
-    def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
-        def get_log_paths(
-            pid: int | None = None,
-            command_or_label: str | None = None,
-            working_directory: str | None = None,
-        ) -> ProcessLogPathsResult:
-            return self._apply(
-                process_manager, pid, command_or_label, working_directory
-            )
-
-        mcp.add_tool(
-            FunctionTool.from_function(
-                get_log_paths, name=self.name, description=self.mcp_description
-            )
-        )
-
-    def build_subparser(self, parser: ArgumentParser) -> None:
-        parser.add_argument(
-            "target",
-            metavar="TARGET",
-            help="The PID, label, or command to get log paths for.",
-        )
-        parser.add_argument("args", nargs="*", help="Arguments to the command")
-        parser.add_argument(
-            "--working-directory",
-            default=os.getcwd(),
-            help="The working directory for the process.",
-        )
-
-    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
-        pid, command_or_label = _parse_target_to_pid_or_command_or_label(
-            args.target, args.args
-        )
-
-        payload = {
-            "pid": pid,
-            "command_or_label": command_or_label,
-            "working_directory": args.working_directory,
-        }
-        execute_mcp_request(self.name, port, payload, format)
-
-
 class KillPersistprocTool(ITool):
     name = "kill_persistproc"
     cli_description = (
@@ -602,10 +514,8 @@ class KillPersistprocTool(ITool):
 ALL_TOOL_CLASSES = [
     StartProcessTool,
     ListProcessesTool,
-    GetProcessStatusTool,
     StopProcessTool,
     RestartProcessTool,
     GetProcessOutputTool,
-    GetProcessLogPathsTool,
     KillPersistprocTool,
 ]

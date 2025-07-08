@@ -8,9 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from persistproc.process_manager import ProcessManager
 from persistproc.tools import (
     ALL_TOOL_CLASSES,
-    GetProcessLogPathsTool,
     GetProcessOutputTool,
-    GetProcessStatusTool,
     KillPersistprocTool,
     ListProcessesTool,
     RestartProcessTool,
@@ -216,7 +214,7 @@ class TestListProcessesTool:
     """Test the ListProcessesTool class."""
 
     def test_apply_method(self):
-        """Test the _apply static method."""
+        """Test the _apply static method without filters."""
         mock_manager = MagicMock(spec=ProcessManager)
         mock_result = MagicMock()
         mock_manager.list.return_value = mock_result
@@ -224,63 +222,65 @@ class TestListProcessesTool:
         result = ListProcessesTool._apply(mock_manager)
 
         assert result == mock_result
-        mock_manager.list.assert_called_once()
+        mock_manager.list.assert_called_once_with(
+            pid=None, command_or_label=None, working_directory=None
+        )
+
+    def test_apply_method_with_filters(self):
+        """Test the _apply static method with filters."""
+        mock_manager = MagicMock(spec=ProcessManager)
+        mock_result = MagicMock()
+        mock_manager.list.return_value = mock_result
+
+        result = ListProcessesTool._apply(
+            mock_manager, pid=123, command_or_label="python", working_directory="/tmp"
+        )
+
+        assert result == mock_result
+        mock_manager.list.assert_called_once_with(
+            pid=123, command_or_label="python", working_directory="/tmp"
+        )
 
     def test_build_subparser(self):
-        """Test CLI subparser configuration (no args)."""
+        """Test CLI subparser configuration with filtering options."""
         tool = ListProcessesTool()
         mock_parser = MagicMock()
 
         tool.build_subparser(mock_parser)
 
-        # Should not add any arguments
-        mock_parser.add_argument.assert_not_called()
+        # Should add filtering arguments
+        assert mock_parser.add_argument.call_count == 3
+        call_args = [call[0] for call in mock_parser.add_argument.call_args_list]
+        assert any("--pid" in args for args in call_args)
+        assert any("--command-or-label" in args for args in call_args)
+        assert any("--working-directory" in args for args in call_args)
 
     @patch("persistproc.tools.execute_mcp_request")
-    def test_call_with_args(self, mock_mcp_request):
-        """Test CLI execution."""
+    def test_call_with_args_no_filters(self, mock_mcp_request):
+        """Test CLI execution without filters."""
         tool = ListProcessesTool()
-        args = Namespace()
+        args = Namespace(pid=None, command_or_label=None, working_directory=None)
 
         tool.call_with_args(args, 8947)
 
         mock_mcp_request.assert_called_once_with("list", 8947, format="json")
 
-
-class TestGetProcessStatusTool:
-    """Test the GetProcessStatusTool class."""
-
-    def test_apply_method(self):
-        """Test the _apply static method."""
-        mock_manager = MagicMock(spec=ProcessManager)
-        mock_result = MagicMock()
-        mock_manager.get_status.return_value = mock_result
-
-        result = GetProcessStatusTool._apply(
-            mock_manager, pid=123, command_or_label="python", working_directory="/tmp"
-        )
-
-        assert result == mock_result
-        mock_manager.get_status.assert_called_once_with(
-            pid=123, command_or_label="python", working_directory=Path("/tmp")
-        )
-
     @patch("persistproc.tools.execute_mcp_request")
-    @patch("persistproc.tools._parse_target_to_pid_or_command_or_label")
-    def test_call_with_args(self, mock_parse, mock_mcp_request):
-        """Test CLI execution."""
-        mock_parse.return_value = (123, None)
-
-        tool = GetProcessStatusTool()
-        args = Namespace(target="123", args=[], working_directory="/tmp")
+    def test_call_with_args_with_filters(self, mock_mcp_request):
+        """Test CLI execution with filters."""
+        tool = ListProcessesTool()
+        args = Namespace(pid=123, command_or_label="python", working_directory="/tmp")
 
         tool.call_with_args(args, 8947)
 
-        mock_parse.assert_called_once_with("123", [])
         mock_mcp_request.assert_called_once_with(
-            "status",
+            "list",
             8947,
-            {"pid": 123, "command_or_label": None, "working_directory": "/tmp"},
+            {
+                "pid": 123,
+                "command_or_label": "python",
+                "working_directory": "/tmp",
+            },
             "json",
         )
 
@@ -403,25 +403,6 @@ class TestGetProcessOutputTool:
         )
 
 
-class TestGetProcessLogPathsTool:
-    """Test the GetProcessLogPathsTool class."""
-
-    def test_apply_method(self):
-        """Test the _apply static method."""
-        mock_manager = MagicMock(spec=ProcessManager)
-        mock_result = MagicMock()
-        mock_manager.get_log_paths.return_value = mock_result
-
-        result = GetProcessLogPathsTool._apply(
-            mock_manager, pid=123, command_or_label="python", working_directory="/tmp"
-        )
-
-        assert result == mock_result
-        mock_manager.get_log_paths.assert_called_once_with(
-            pid=123, command_or_label="python", working_directory=Path("/tmp")
-        )
-
-
 class TestKillPersistprocTool:
     """Test the KillPersistprocTool class."""
 
@@ -442,17 +423,15 @@ class TestToolCollection:
 
     def test_all_tool_classes_count(self):
         """Test that all expected tools are in the collection."""
-        assert len(ALL_TOOL_CLASSES) == 8
+        assert len(ALL_TOOL_CLASSES) == 6
 
         tool_names = [tool_cls().name for tool_cls in ALL_TOOL_CLASSES]
         expected_names = {
             "start",
             "list",
-            "status",
             "stop",
             "restart",
             "output",
-            "get_log_paths",
             "kill_persistproc",
         }
         assert set(tool_names) == expected_names
