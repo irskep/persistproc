@@ -11,6 +11,7 @@ __all__ = [
     "ListProcessesResult",
     "ProcessOutputResult",
     "RestartProcessResult",
+    "ProcessControlResult",
     "StreamEnum",
 ]
 
@@ -79,6 +80,20 @@ class RestartProcessResult:
     """
 
     pid: int | None = None
+    error: str | None = None
+
+
+@dataclass
+class ProcessControlResult:
+    """Unified result for start, stop, and restart operations."""
+
+    action: str  # "start", "stop", or "restart"
+    pid: int | None = None  # new PID for start/restart
+    exit_code: int | None = None  # exit code of stopped process for stop/restart
+    log_stdout: str | None = None  # always included when available
+    log_stderr: str | None = None  # always included when available
+    log_combined: str | None = None  # always included when available
+    label: str | None = None  # always included when available
     error: str | None = None
 
 
