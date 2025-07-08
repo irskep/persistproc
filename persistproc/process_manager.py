@@ -22,9 +22,7 @@ from persistproc.process_types import (
     KillPersistprocResult,
     ListProcessesResult,
     ProcessInfo,
-    ProcessLogPathsResult,
     ProcessOutputResult,
-    ProcessStatusResult,
     RestartProcessResult,
     StartProcessResult,
     StopProcessResult,
@@ -233,35 +231,6 @@ class ProcessManager:  # noqa: D101
         )
         res = [self._to_public_info(ent) for ent in filtered_snapshot]
         return ListProcessesResult(processes=res)
-
-    def get_status(
-        self,
-        pid: int | None = None,
-        command_or_label: str | None = None,
-        working_directory: Path | None = None,
-    ) -> ProcessStatusResult:  # noqa: D401
-        process_snapshot = self._storage.get_processes_values_snapshot()
-        target_pid, error = self._lookup_process_in_snapshot(
-            process_snapshot, pid, None, command_or_label, working_directory
-        )
-
-        if error:
-            return ProcessStatusResult(error=error)
-
-        if target_pid is None:
-            return ProcessStatusResult(error="Process not found")
-
-        ent = self._storage.get_process_snapshot(target_pid)
-        if ent is None:
-            return ProcessStatusResult(error=f"PID {target_pid} not found")
-
-        return ProcessStatusResult(
-            pid=ent.pid,
-            command=ent.command,
-            working_directory=ent.working_directory,
-            status=ent.status,
-            label=ent.label,
-        )
 
     # ------------------------------------------------------------------
     # Control helpers
@@ -561,38 +530,6 @@ class ProcessManager:  # noqa: D101
                 )
         else:
             return ProcessOutputResult(output=[], lines_before=0, lines_after=0)
-
-    def get_log_paths(
-        self,
-        pid: int | None = None,
-        command_or_label: str | None = None,
-        working_directory: Path | None = None,
-    ) -> ProcessLogPathsResult:  # noqa: D401
-        logger.debug("get_log_paths: finding process")
-        process_snapshot = self._storage.get_processes_values_snapshot()
-        target_pid, error = self._lookup_process_in_snapshot(
-            process_snapshot, pid, None, command_or_label, working_directory
-        )
-        logger.debug("get_log_paths: finished finding process")
-
-        if error:
-            return ProcessLogPathsResult(error=error)
-
-        if target_pid is None:
-            return ProcessLogPathsResult(error="Process not found")
-
-        logger.debug("get_log_paths: getting process info for pid=%d", target_pid)
-        ent = self._storage.get_process_snapshot(target_pid)
-        if ent is None:
-            logger.debug("get_log_paths: process not found for pid=%d", target_pid)
-            return ProcessLogPathsResult(error=f"PID {target_pid} not found")
-        logger.debug("get_log_paths: got process info for pid=%d", target_pid)
-
-        if self._log_mgr is None:
-            raise RuntimeError("Log manager not available")
-
-        paths = self._log_mgr.paths_for(ent.log_prefix)
-        return ProcessLogPathsResult(stdout=str(paths.stdout), stderr=str(paths.stderr))
 
     def kill_persistproc(self) -> KillPersistprocResult:  # noqa: D401
         """Kill all managed processes and then kill the server process."""

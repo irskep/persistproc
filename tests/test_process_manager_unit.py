@@ -206,39 +206,39 @@ class TestProcessManagerList:
         assert proc_by_pid[5678].status == "exited"
 
 
-class TestProcessManagerGetStatus:
-    """Test ProcessManager.get_status() method."""
+class TestProcessManagerListWithStatus:
+    """Test ProcessManager.list() method returning status information."""
 
-    def test_get_status_by_pid(self, process_manager):
-        """Test getting status by PID."""
+    def test_list_with_status_by_pid(self, process_manager):
+        """Test getting status by PID via list method."""
         proc = create_fake_proc_entry(pid=1234, command=["python", "script.py"])
         process_manager._storage.add_process(proc)
 
-        result = process_manager.get_status(pid=1234)
+        result = process_manager.list(pid=1234)
 
-        assert result.error is None
-        assert result.pid == 1234
-        assert result.command == ["python", "script.py"]
-        assert result.status == "running"
+        assert len(result.processes) == 1
+        process_info = result.processes[0]
+        assert process_info.pid == 1234
+        assert process_info.command == ["python", "script.py"]
+        assert process_info.status == "running"
 
-    def test_get_status_pid_not_found(self, process_manager):
-        """Test getting status for non-existent PID."""
-        result = process_manager.get_status(pid=9999)
+    def test_list_with_status_pid_not_found(self, process_manager):
+        """Test list method for non-existent PID."""
+        result = process_manager.list(pid=9999)
 
-        assert result.error is not None
-        assert "not found" in result.error.lower()
+        assert len(result.processes) == 0
 
-    def test_get_status_by_label(self, process_manager):
-        """Test getting status by label."""
+    def test_list_with_status_by_label(self, process_manager):
+        """Test getting status by label via list method."""
         proc = create_fake_proc_entry(pid=1234, label="my-app")
         process_manager._storage.add_process(proc)
 
-        # Mock the lookup to test the path (since _lookup_process_in_snapshot is complex)
-        result = process_manager.get_status(command_or_label="my-app")
+        result = process_manager.list(command_or_label="my-app")
 
-        # This will call _lookup_process_in_snapshot, which should find the process
-        assert result.pid == 1234
-        assert result.label == "my-app"
+        assert len(result.processes) == 1
+        process_info = result.processes[0]
+        assert process_info.pid == 1234
+        assert process_info.label == "my-app"
 
 
 class TestProcessManagerStop:
@@ -382,26 +382,28 @@ class TestProcessManagerGetOutput:
         assert "Second line" in result.output[1]
 
 
-class TestProcessManagerGetLogPaths:
-    """Test ProcessManager.get_log_paths() method."""
+class TestProcessManagerListWithLogPaths:
+    """Test ProcessManager.list() method returning log paths."""
 
-    def test_get_log_paths_success(self, process_manager):
-        """Test getting log paths for existing process."""
+    def test_list_with_log_paths_success(self, process_manager):
+        """Test getting log paths via list method for existing process."""
         proc_entry = create_fake_proc_entry(pid=1234, log_prefix="1234.test")
         process_manager._storage.add_process(proc_entry)
 
-        result = process_manager.get_log_paths(pid=1234)
+        result = process_manager.list(pid=1234)
 
-        assert result.error is None
-        assert "1234.test.stdout" in result.stdout
-        assert "1234.test.stderr" in result.stderr
+        assert len(result.processes) == 1
+        process_info = result.processes[0]
+        assert process_info.pid == 1234
+        assert "1234.test.stdout" in process_info.log_stdout
+        assert "1234.test.stderr" in process_info.log_stderr
+        assert "1234.test.combined" in process_info.log_combined
 
-    def test_get_log_paths_not_found(self, process_manager):
-        """Test getting log paths for non-existent process."""
-        result = process_manager.get_log_paths(pid=9999)
+    def test_list_with_log_paths_not_found(self, process_manager):
+        """Test list method for non-existent process."""
+        result = process_manager.list(pid=9999)
 
-        assert result.error is not None
-        assert "not found" in result.error.lower()
+        assert len(result.processes) == 0
 
 
 class TestProcessManagerKillPersistproc:
