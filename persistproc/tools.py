@@ -21,6 +21,9 @@ from .process_types import (
 
 import logging
 
+# WARNING: run.py depends on details of this file in ways that the linter and
+# type checker cannot detect! Specifically tool names, parameters, and return types.
+
 logger = logging.getLogger(__name__)
 
 

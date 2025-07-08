@@ -12,7 +12,7 @@ A shared process layer for multi-agent development workflows
 
 ## What is `persistproc`?
 
-Persistproc is an MCP server which lets agents and humans see and control long-running processes like web servers. The goal is to reduce the amount of copying and pasting you need to do, make it easier for you to use multiple agents, and be tool-agnostic.
+Persistproc is an MCP server and command line tool which lets agents and humans see and control long-running processes like web servers. The goal is to reduce the amount of copying and pasting you need to do while coding with AI, make it easier for you to use multiple agents, and be tool-agnostic.
 
 There is no config file. Processes are managed entirely at runtime. This is not a replacement for supervisord.
 
@@ -96,7 +96,7 @@ The server exposes the following tools:
 
 | Tool | Description |
 | --- | --- |
-| **ctrl** | **Unified process control: start, stop, or restart processes with a single command.** |
+| ctrl | Unified process control: start, stop, or restart processes. |
 | list | List all managed processes and their status. Can optionally filter by pid, command, or working directory and provides log paths. |
 | output | Retrieve captured output from a process. |
 | kill_persistproc | Kill all managed processes and get the PID of the persistproc server. |

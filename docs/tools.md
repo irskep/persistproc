@@ -1,120 +1,6 @@
-# Tools and commands
+# Command line usage
 
-This page documents all persistproc commands and their usage. Most commands are available both from the command line and as MCP tools for agents, with a few exceptions noted below.
-
-!!! info "What is a tool?"
-    persistproc is primarily an MCP server, but all its tools are accessible to you on the command line. This page will discuss each tool in its command line form. The agent has access to the exact same functionality, just through a different mechanism for calling the tools.
-
-## `ctrl`
-
-**Unified process control** - the recommended way to manage processes with persistproc. This command provides a single interface for start, stop, and restart operations with consistent arguments and output format.
-
-<!-- persistproc ctrl --help -->
-```
-usage: persistproc ctrl [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
-                        [--format {text,json}] [--working-directory WORKING_DIRECTORY]
-                        [--environment ENVIRONMENT] [--force] [--label LABEL]
-                        {start,stop,restart} TARGET [args ...]
-
-positional arguments:
-  {start,stop,restart}  The action to perform: start, stop, or restart
-  TARGET                The PID, label, command, or command to start (depending on action)
-  args                  Arguments to the command
-
-options:
-  -h, --help            show this help message and exit
-  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
-  --data-dir DATA_DIR   Data directory (default:
-                        ~/Library/Application Support/persistproc;
-                        env: $PERSISTPROC_DATA_DIR)
-  -v, --verbose         Increase verbosity; you can use -vv for more
-  -q, --quiet           Decrease verbosity. Passing -q once will show only
-                        warnings and errors.
-  --format {text,json}  Output format (default: text; env:
-                        $PERSISTPROC_FORMAT)
-  --working-directory WORKING_DIRECTORY
-                        The working directory for the process (required for start, optional for stop/restart)
-  --environment ENVIRONMENT
-                        Environment variables as JSON string (start only)
-  --force               Force stop the process (stop only)
-  --label LABEL         Custom label for the process
-```
-
-**Examples**
-
-Start a new process:
-
-```bash
-> persistproc ctrl start npm run dev
-Started process with PID: 12345
-Action: start
-Label: npm run dev in /Users/user/myproject
-Stdout log: /Users/user/Library/Application Support/persistproc/logs/12345_stdout.log
-Stderr log: /Users/user/Library/Application Support/persistproc/logs/12345_stderr.log
-Combined log: /Users/user/Library/Application Support/persistproc/logs/12345_combined.log
-```
-
-Start with custom working directory and label:
-
-```bash
-> persistproc ctrl --working-directory /path/to/project --label "api-server" start python -m uvicorn app:main --host 0.0.0.0 --port 8000
-```
-
-Start with environment variables:
-
-```bash
-> persistproc ctrl --environment '{"DEBUG": "1", "PORT": "3000"}' start node server.js
-```
-
-Stop a process by PID:
-
-```bash
-> persistproc ctrl stop 12345
-Action: stop
-PID: 12345
-Previous exit code: 0
-Stdout log: /Users/user/Library/Application Support/persistproc/logs/12345_stdout.log
-Stderr log: /Users/user/Library/Application Support/persistproc/logs/12345_stderr.log
-Combined log: /Users/user/Library/Application Support/persistproc/logs/12345_combined.log
-```
-
-Stop a process by command:
-
-```bash
-> persistproc ctrl stop npm run dev
-> persistproc ctrl --working-directory /path/to/project stop npm run dev
-```
-
-Force stop a process:
-
-```bash
-> persistproc ctrl --force stop 12345
-```
-
-Restart a process:
-
-```bash
-> persistproc ctrl restart 12345
-Action: restart
-PID: 54321
-Previous exit code: 0
-Stdout log: /Users/user/Library/Application Support/persistproc/logs/54321_stdout.log
-Stderr log: /Users/user/Library/Application Support/persistproc/logs/54321_stderr.log
-Combined log: /Users/user/Library/Application Support/persistproc/logs/54321_combined.log
-
-> persistproc ctrl restart npm run dev
-> persistproc ctrl --working-directory /path/to/project restart "my-server-label"
-```
-
-!!! tip "Why use ctrl?"
-    The `ctrl` command provides several advantages over individual commands:
-    
-    - **Unified interface**: One command with consistent options for all operations
-    - **Enhanced output**: Always includes log paths in results for easy access
-    - **Better semantics**: Clear action-based syntax that's easy to understand
-    - **Future-proof**: New features will be added to ctrl first
-    
-    While the individual `start`, `stop`, and `restart` commands remain available for backwards compatibility, `ctrl` is recommended for new workflows.
+This page documents all persistproc commands and their usage.
 
 ## `serve`
 
@@ -256,11 +142,11 @@ Start a new process.
 usage: persistproc start [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
                          [--format {text,json}]
                          [--working-directory WORKING_DIRECTORY]
-                         [--label LABEL]
+                         [--environment ENVIRONMENT] [--label LABEL]
                          COMMAND [args ...]
 
 positional arguments:
-  COMMAND               The command to run.
+  COMMAND               The command to start
   args                  Arguments to the command
 
 options:
@@ -275,9 +161,10 @@ options:
   --format {text,json}  Output format (default: text; env:
                         $PERSISTPROC_FORMAT)
   --working-directory WORKING_DIRECTORY
-                        The working directory for the process.
-  --label LABEL         Custom label for the process (default: '<command> in
-                        <working_directory>').
+                        The working directory for the process
+  --environment ENVIRONMENT
+                        Environment variables as JSON string
+  --label LABEL         Custom label for the process
 ```
 
 **Examples**
@@ -295,12 +182,6 @@ Combined log: /Users/user/Library/Application Support/persistproc/logs/12345_com
 
 ```bash
 > persistproc start python -m http.server 8080
-```
-
-Unlike `run`, the `start` command doesn't stream output, so you typically don't need `--` for flag conflicts:
-
-```bash
-> persistproc start echo -v "verbose output"
 ```
 
 Specify a working directory:
@@ -321,6 +202,120 @@ Add a custom label for complex commands:
 ```bash
 > persistproc start --label "worker-pool" 'celery -A myapp worker --loglevel=info --concurrency=4 --queues=high_priority,low_priority'
 ```
+
+
+## `stop`
+
+Stop a running process.
+
+<!-- persistproc stop --help -->
+```
+usage: persistproc stop [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                        [--format {text,json}]
+                        [--working-directory WORKING_DIRECTORY] [--force]
+                        TARGET [args ...]
+
+positional arguments:
+  TARGET                The PID, label, or command to stop/restart
+  args                  Arguments to the command
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+  --working-directory WORKING_DIRECTORY
+                        The working directory for the process
+  --force               Force stop the process
+```
+
+**Examples**
+
+Stop a process by PID, command, or label:
+
+```bash
+> persistproc stop 12345
+Process stopped with exit code: 0
+
+> persistproc stop npm run dev
+> persistproc stop "my-dev-server"
+```
+
+Add working directory context when matching by command:
+
+```bash
+> persistproc stop --working-directory /path/to/project npm run dev
+```
+
+Force stop if the process doesn't respond to normal termination:
+
+```bash
+> persistproc stop --force 12345
+```
+
+
+## `restart`
+
+Stops a process and starts it again with the same arguments and working directory.
+
+First, the process shuts down completely. If the process fails to shut down within the timeout period, returns an error.
+
+Then, the command, working directory, and environment variables are reused to start a fresh copy of the process.
+
+`output` will only return the logs for the latest copy of the process, not the history of every run.
+
+<!-- persistproc restart --help -->
+```
+usage: persistproc restart [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                           [--format {text,json}]
+                           [--working-directory WORKING_DIRECTORY]
+                           [--label LABEL]
+                           TARGET [args ...]
+
+positional arguments:
+  TARGET                The PID, label, or command to stop/restart
+  args                  Arguments to the command
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+  --working-directory WORKING_DIRECTORY
+                        The working directory for the process
+  --label LABEL         Custom label for the process
+```
+
+**Examples**
+
+Restart a process by PID, command, or label:
+
+```bash
+> persistproc restart 12345
+Process restarted with PID: 54321
+
+> persistproc restart npm run dev
+> persistproc restart "my-dev-server"
+```
+
+Add working directory context when matching by command:
+
+```bash
+> persistproc restart --working-directory /path/to/project npm run dev
+```
+
 
 ## `list`
 
@@ -395,114 +390,6 @@ Get more detailed output or different formats:
 > persistproc list --format json
 ```
 
-## `stop`
-
-Stop a running process.
-
-<!-- persistproc stop --help -->
-```
-usage: persistproc stop [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
-                        [--format {text,json}]
-                        [--working-directory WORKING_DIRECTORY] [--force]
-                        TARGET [args ...]
-
-positional arguments:
-  TARGET                The PID, label, or command to stop.
-  args                  Arguments to the command
-
-options:
-  -h, --help            show this help message and exit
-  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
-  --data-dir DATA_DIR   Data directory (default:
-                        ~/Library/Application Support/persistproc;
-                        env: $PERSISTPROC_DATA_DIR)
-  -v, --verbose         Increase verbosity; you can use -vv for more
-  -q, --quiet           Decrease verbosity. Passing -q once will show only
-                        warnings and errors.
-  --format {text,json}  Output format (default: text; env:
-                        $PERSISTPROC_FORMAT)
-  --working-directory WORKING_DIRECTORY
-                        The working directory for the process.
-  --force               Force stop the process.
-```
-
-**Examples**
-
-Stop a process by PID, command, or label:
-
-```bash
-> persistproc stop 12345
-Process stopped with exit code: 0
-
-> persistproc stop npm run dev
-> persistproc stop "my-dev-server"
-```
-
-Add working directory context when matching by command:
-
-```bash
-> persistproc stop --working-directory /path/to/project npm run dev
-```
-
-Force stop if the process doesn't respond to normal termination:
-
-```bash
-> persistproc stop --force 12345
-```
-
-## `restart`
-
-Stops a process and starts it again with the same arguments and working directory.
-
-First, the process shut down completely. If the process fails to shut down within xxx, returns an error. TODO cross reference with 'stop'
-
-Then, the command, working directory, and environment variables are reused to start a fresh copy of the process.
-
-`output` will only return the logs for the latest copy of the process, not the history of every run.
-
-<!-- persistproc restart --help -->
-```
-usage: persistproc restart [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
-                           [--format {text,json}]
-                           [--working-directory WORKING_DIRECTORY]
-                           TARGET [args ...]
-
-positional arguments:
-  TARGET                The PID, label, or command to restart.
-  args
-
-options:
-  -h, --help            show this help message and exit
-  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
-  --data-dir DATA_DIR   Data directory (default:
-                        ~/Library/Application Support/persistproc;
-                        env: $PERSISTPROC_DATA_DIR)
-  -v, --verbose         Increase verbosity; you can use -vv for more
-  -q, --quiet           Decrease verbosity. Passing -q once will show only
-                        warnings and errors.
-  --format {text,json}  Output format (default: text; env:
-                        $PERSISTPROC_FORMAT)
-  --working-directory WORKING_DIRECTORY
-                        The working directory for the process.
-```
-
-**Examples**
-
-Restart a process by PID, command, or label:
-
-```bash
-> persistproc restart 12345
-Process restarted with PID: 54321
-
-> persistproc restart npm run dev
-> persistproc restart "my-dev-server"
-```
-
-Add working directory context when matching by command:
-
-```bash
-> persistproc restart --working-directory /path/to/project npm run dev
-```
 
 ## `output`
 
@@ -624,4 +511,108 @@ Get structured output showing the server PID:
 
 ```bash
 > persistproc kill_persistproc --format json
+```
+
+## `ctrl`
+
+`start`, `stop`, and `restart` are aliases for `ctrl start`, `ctrl stop`, and `ctrl restart`. The MCP server provides a single `ctrl` tool to minimize the number of tools it exposes, and tools are automatically mapped to commands, so `ctrl` itself is available as a command.
+
+<!-- persistproc ctrl --help -->
+```
+usage: persistproc ctrl [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
+                        [--format {text,json}]
+                        [--working-directory WORKING_DIRECTORY]
+                        [--environment ENVIRONMENT] [--force] [--label LABEL]
+                        {start,stop,restart} TARGET [args ...]
+
+positional arguments:
+  {start,stop,restart}  The action to perform: start, stop, or restart
+  TARGET                The PID, label, command, or command to start
+                        (depending on action)
+  args                  Arguments to the command
+
+options:
+  -h, --help            show this help message and exit
+  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
+  --data-dir DATA_DIR   Data directory (default:
+                        ~/Library/Application Support/persistproc;
+                        env: $PERSISTPROC_DATA_DIR)
+  -v, --verbose         Increase verbosity; you can use -vv for more
+  -q, --quiet           Decrease verbosity. Passing -q once will show only
+                        warnings and errors.
+  --format {text,json}  Output format (default: text; env:
+                        $PERSISTPROC_FORMAT)
+  --working-directory WORKING_DIRECTORY
+                        The working directory for the process (required for
+                        start, optional for stop/restart)
+  --environment ENVIRONMENT
+                        Environment variables as JSON string (start only)
+  --force               Force stop the process (stop only)
+  --label LABEL         Custom label for the process
+```
+
+**Examples**
+
+Start a new process (equivalent to `persistproc start`):
+
+```bash
+> persistproc ctrl start npm run dev
+Started process with PID: 12345
+Action: start
+Label: npm run dev in /Users/user/myproject
+Stdout log: /Users/user/Library/Application Support/persistproc/logs/12345_stdout.log
+Stderr log: /Users/user/Library/Application Support/persistproc/logs/12345_stderr.log
+Combined log: /Users/user/Library/Application Support/persistproc/logs/12345_combined.log
+```
+
+Start with custom working directory and label:
+
+```bash
+> persistproc ctrl --working-directory /path/to/project --label "api-server" start python -m uvicorn app:main --host 0.0.0.0 --port 8000
+```
+
+Start with environment variables:
+
+```bash
+> persistproc ctrl --environment '{"DEBUG": "1", "PORT": "3000"}' start node server.js
+```
+
+Stop a process by PID (equivalent to `persistproc stop`):
+
+```bash
+> persistproc ctrl stop 12345
+Action: stop
+PID: 12345
+Exit code: 0
+Stdout log: /Users/user/Library/Application Support/persistproc/logs/12345_stdout.log
+Stderr log: /Users/user/Library/Application Support/persistproc/logs/12345_stderr.log
+Combined log: /Users/user/Library/Application Support/persistproc/logs/12345_combined.log
+```
+
+Stop a process by command:
+
+```bash
+> persistproc ctrl stop npm run dev
+> persistproc ctrl --working-directory /path/to/project stop npm run dev
+```
+
+Force stop a process:
+
+```bash
+> persistproc ctrl --force stop 12345
+```
+
+Restart a process (equivalent to `persistproc restart`):
+
+```bash
+> persistproc ctrl restart 12345
+Action: restart
+PID: 54321
+Exit code: 0
+Stdout log: /Users/user/Library/Application Support/persistproc/logs/54321_stdout.log
+Stderr log: /Users/user/Library/Application Support/persistproc/logs/54321_stderr.log
+Combined log: /Users/user/Library/Application Support/persistproc/logs/54321_combined.log
+
+> persistproc ctrl restart npm run dev
+> persistproc ctrl --working-directory /path/to/project restart "my-server-label"
 ```
