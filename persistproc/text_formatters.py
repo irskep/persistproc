@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .process_types import (
-    KillPersistprocResult,
+    ShutdownResult,
     ListProcessesResult,
     ProcessOutputResult,
     RestartProcessResult,
@@ -93,12 +93,12 @@ def format_restart_process_result(result: RestartProcessResult) -> str:
         return "Process restart failed"
 
 
-def format_kill_persistproc_result(result: KillPersistprocResult) -> str:
-    """Format a KillPersistprocResult for human-readable output."""
+def format_shutdown_result(result: ShutdownResult) -> str:
+    """Format a ShutdownResult for human-readable output."""
     if result.error:
         return f"Error: {result.error}"
 
-    return f"Killed persistproc server with PID: {result.pid}"
+    return f"Shutdown persistproc server with PID: {result.pid}"
 
 
 # Mapping from result types to their formatting functions
@@ -108,7 +108,7 @@ FORMATTERS = {
     ListProcessesResult: format_list_processes_result,
     ProcessOutputResult: format_process_output_result,
     RestartProcessResult: format_restart_process_result,
-    KillPersistprocResult: format_kill_persistproc_result,
+    ShutdownResult: format_shutdown_result,
 }
 
 

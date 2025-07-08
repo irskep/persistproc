@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 
@@ -9,8 +10,9 @@ from fastmcp.exceptions import ToolError
 from .client import make_client
 from .logging_utils import CLI_LOGGER
 from .process_types import (
-    KillPersistprocResult,
+    ShutdownResult,
     ListProcessesResult,
+    ProcessInfo,
     ProcessOutputResult,
     RestartProcessResult,
     StartProcessResult,
@@ -61,7 +63,6 @@ async def make_mcp_request(
 
 def _create_result_object(tool_name: str, result_data: dict) -> object | None:
     """Create a result object from JSON data based on the tool name."""
-    from .process_types import ProcessInfo
 
     # Map tool names to their result types
     result_type_map = {
@@ -70,8 +71,18 @@ def _create_result_object(tool_name: str, result_data: dict) -> object | None:
         "list": ListProcessesResult,
         "output": ProcessOutputResult,
         "restart": RestartProcessResult,
-        "kill_persistproc": KillPersistprocResult,
+        "shutdown": ShutdownResult,
     }
+
+    # Handle ctrl tool which can perform start/stop/restart actions
+    if tool_name == "ctrl":
+        action = result_data.get("action")
+        if action == "start":
+            result_type_map["ctrl"] = StartProcessResult
+        elif action == "stop":
+            result_type_map["ctrl"] = StopProcessResult
+        elif action == "restart":
+            result_type_map["ctrl"] = RestartProcessResult
 
     result_type = result_type_map.get(tool_name)
     if result_type:
@@ -93,7 +104,6 @@ def _create_result_object(tool_name: str, result_data: dict) -> object | None:
                 return ListProcessesResult(processes=processes)
             else:
                 # For other result types, filter out any fields not in the dataclass
-                import inspect
 
                 sig = inspect.signature(result_type)
                 filtered_data = {

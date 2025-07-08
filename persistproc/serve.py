@@ -31,7 +31,7 @@ def _build_app(pm: ProcessManager) -> FastMCP:  # noqa: D401 – helper
     return app
 
 
-def serve(port: int, data_dir: Path) -> None:  # noqa: D401
+def serve(port: int, data_dir: Path, server_log_path: Path | None = None) -> None:  # noqa: D401
     """Start the *persistproc* MCP server.
 
     By default this function logs the intended bind address and *returns* so
@@ -44,7 +44,7 @@ def serve(port: int, data_dir: Path) -> None:  # noqa: D401
 
     # The server blocks in the foreground until interrupted.
 
-    pm = ProcessManager(data_dir=data_dir)
+    pm = ProcessManager(server_log_path, data_dir=data_dir)
     app = _build_app(pm)
 
     url = f"http://127.0.0.1:{port}/mcp/"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import json
 import os
 import shlex
 from argparse import ArgumentParser, Namespace
@@ -12,7 +13,6 @@ from persistproc.process_manager import ProcessManager
 
 from .mcp_client_utils import execute_mcp_request
 from .process_types import (
-    KillPersistprocResult,
     ListProcessesResult,
     ProcessControlResult,
     ProcessOutputResult,
@@ -442,8 +442,6 @@ class CtrlProcessTool(ITool):
         environment = None
         if getattr(args, "environment", None):
             try:
-                import json
-
                 environment = json.loads(args.environment)
             except json.JSONDecodeError as e:
                 print(f"Error parsing environment JSON: {e}")
@@ -462,40 +460,8 @@ class CtrlProcessTool(ITool):
         execute_mcp_request(self.name, port, payload, format)
 
 
-class KillPersistprocTool(ITool):
-    name = "kill_persistproc"
-    cli_description = (
-        "Kill all managed processes and get the PID of the persistproc server"
-    )
-    mcp_description = (
-        "Kill all managed processes and get the PID of the persistproc server"
-    )
-
-    @staticmethod
-    def _apply(process_manager: ProcessManager) -> KillPersistprocResult:
-        logger.debug("kill_persistproc called")
-        return process_manager.kill_persistproc()
-
-    def register_tool(self, process_manager: ProcessManager, mcp: FastMCP) -> None:
-        def kill_persistproc() -> KillPersistprocResult:
-            return self._apply(process_manager)
-
-        mcp.add_tool(
-            FunctionTool.from_function(
-                kill_persistproc, name=self.name, description=self.mcp_description
-            )
-        )
-
-    def build_subparser(self, parser: ArgumentParser) -> None:
-        pass
-
-    def call_with_args(self, args: Namespace, port: int, format: str = "json") -> None:
-        execute_mcp_request(self.name, port, format=format)
-
-
 ALL_TOOL_CLASSES = [
     CtrlProcessTool,
     ListProcessesTool,
     GetProcessOutputTool,
-    KillPersistprocTool,
 ]

@@ -30,10 +30,10 @@ def process_manager(fake_registry, temp_dir):
     """Create a ProcessManager with fake dependencies and no monitoring."""
     # Disable monitoring to avoid real threading
     return ProcessManager(
+        temp_dir / "server.log",
         monitor=False,
         registry=fake_registry,
         data_dir=temp_dir,
-        server_log_path=temp_dir / "server.log",
     )
 
 
@@ -61,7 +61,12 @@ class TestProcessManagerInit:
 
     def test_init_with_monitoring_disabled(self, fake_registry, temp_dir):
         """Test initialization with monitoring disabled."""
-        pm = ProcessManager(monitor=False, registry=fake_registry, data_dir=temp_dir)
+        pm = ProcessManager(
+            temp_dir / "server.log",
+            monitor=False,
+            registry=fake_registry,
+            data_dir=temp_dir,
+        )
         assert pm.data_dir == temp_dir
         assert pm.monitor is False
         assert pm._monitor_thread is None
@@ -72,7 +77,12 @@ class TestProcessManagerInit:
             mock_thread_instance = Mock()
             mock_thread.return_value = mock_thread_instance
 
-            ProcessManager(monitor=True, registry=fake_registry, data_dir=temp_dir)
+            ProcessManager(
+                temp_dir / "server.log",
+                monitor=True,
+                registry=fake_registry,
+                data_dir=temp_dir,
+            )
 
             # Should create and start thread
             mock_thread.assert_called_once()
@@ -204,6 +214,21 @@ class TestProcessManagerList:
         assert proc_by_pid[1234].status == "running"
         assert proc_by_pid[5678].label == "proc2"
         assert proc_by_pid[5678].status == "exited"
+
+    def test_list_with_pid_zero_returns_server_info(self, process_manager):
+        """Test that list with pid=0 returns server ProcessInfo."""
+        with patch("os.getpid", return_value=9999):
+            result = process_manager.list(pid=0)
+
+        # Should return only the server process
+        assert len(result.processes) == 1
+        server_process = result.processes[0]
+
+        # Verify server process data
+        assert server_process.pid == 9999
+        assert server_process.label == "persistproc-server"
+        assert server_process.status == "running"
+        assert server_process.command == ["persistproc", "serve"]
 
 
 class TestProcessManagerListWithStatus:
@@ -406,23 +431,23 @@ class TestProcessManagerListWithLogPaths:
         assert len(result.processes) == 0
 
 
-class TestProcessManagerKillPersistproc:
-    """Test ProcessManager.kill_persistproc() method."""
+class TestProcessManagerShutdownMethod:
+    """Test ProcessManager.shutdown() method."""
 
-    def test_kill_persistproc_no_processes(self, process_manager):
-        """Test killing persistproc with no managed processes."""
+    def test_shutdown_no_processes(self, process_manager):
+        """Test shutting down persistproc with no managed processes."""
         with (
             patch("os.getpid", return_value=12345),
             patch("threading.Thread") as mock_thread,
         ):
-            result = process_manager.kill_persistproc()
+            result = process_manager.shutdown()
 
             assert result.pid == 12345
             # Should start a thread to kill the server
             mock_thread.assert_called_once()
 
-    def test_kill_persistproc_with_processes(self, process_manager):
-        """Test killing persistproc with managed processes."""
+    def test_shutdown_with_processes(self, process_manager):
+        """Test shutting down persistproc with managed processes."""
         # Add some running processes
         proc1 = create_fake_proc_entry(pid=1234, status="running")
         proc2 = create_fake_proc_entry(pid=5678, status="exited")
@@ -435,7 +460,7 @@ class TestProcessManagerKillPersistproc:
             patch("threading.Thread") as mock_thread,
             patch.object(process_manager, "stop") as mock_stop,
         ):
-            result = process_manager.kill_persistproc()
+            result = process_manager.shutdown()
 
             assert result.pid == 12345
             # Should only try to stop running processes
@@ -444,12 +469,12 @@ class TestProcessManagerKillPersistproc:
 
 
 class TestProcessManagerShutdown:
-    """Test ProcessManager.shutdown() method."""
+    """Test ProcessManager.shutdown_monitor() method."""
 
     def test_shutdown_stops_monitoring(self, process_manager):
-        """Test that shutdown stops the monitoring thread."""
+        """Test that shutdown_monitor stops the monitoring thread."""
         with patch.object(process_manager._storage, "stop_event_set") as mock_stop:
-            process_manager.shutdown()
+            process_manager.shutdown_monitor()
             mock_stop.assert_called_once()
 
     def test_shutdown_with_monitor_thread(self, fake_registry, temp_dir):
@@ -458,9 +483,14 @@ class TestProcessManagerShutdown:
             mock_thread = Mock()
             mock_thread_cls.return_value = mock_thread
 
-            pm = ProcessManager(monitor=True, registry=fake_registry, data_dir=temp_dir)
+            pm = ProcessManager(
+                temp_dir / "server.log",
+                monitor=True,
+                registry=fake_registry,
+                data_dir=temp_dir,
+            )
 
-            pm.shutdown()
+            pm.shutdown_monitor()
 
             # Should join the thread
             mock_thread.join.assert_called_once_with(timeout=2)

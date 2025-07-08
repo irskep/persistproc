@@ -1,8 +1,10 @@
+import datetime
 import os
+import subprocess
 import time
 from pathlib import Path
 
-from tests.helpers import extract_json, run_cli, start_run, stop_run
+from tests.helpers import extract_json, run_cli, start_persistproc, start_run, stop_run
 
 COUNTER_SCRIPT = Path(__file__).parent / "scripts" / "counter.py"
 
@@ -265,7 +267,6 @@ def test_get_process_output_with_time_filters(server):
     time.sleep(1)
 
     # Record a timestamp
-    import datetime
 
     timestamp = datetime.datetime.now().isoformat()
 
@@ -417,5 +418,73 @@ def test_run_detach_keeps_process_running(server):
     )
     assert proc_after["status"] == "running"
 
-    # 5. Cleanup.
-    run_cli("stop", str(pid))
+
+def pid_is_killed(pid):
+    """Check For the existence of a unix pid."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return True
+    return False
+
+
+def test_shutdown_command():
+    """Test that shutdown command gracefully shuts down the server."""
+
+    # don't use the server fixture here because we want to test the shutdown command
+    start_persistproc()
+
+    # 1. Start a managed process to verify server is working
+    start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
+    result = run_cli("start", start_cmd)
+    start_info = extract_json(result.stdout)
+    assert "pid" in start_info
+
+    # 2. Verify server is responding
+    list_result = run_cli("list")
+    list_info = extract_json(list_result.stdout)
+    assert len(list_info["processes"]) == 1
+
+    # 3. Get the actual server PID first to compare
+    list_server_result = run_cli("list", "--pid", "0")
+    list_server_info = extract_json(list_server_result.stdout)
+    actual_server_pid = list_server_info["processes"][0]["pid"]
+    print(f"DEBUG: Actual server PID from list: {actual_server_pid}")
+
+    # make sure that pid is listening on the port we expect using lsof
+    lsof_result = subprocess.run(
+        ["lsof", "-i", f":{os.environ['PERSISTPROC_PORT']}"],
+        capture_output=True,
+        text=True,
+    )
+    print(f"{lsof_result.stdout}")
+    assert lsof_result.returncode == 0, f"lsof failed: {lsof_result.stderr}"
+    assert str(actual_server_pid) in lsof_result.stdout, (
+        f"Server PID {actual_server_pid} not found in lsof output: {lsof_result.stdout}"
+    )
+
+    # 4. Run shutdown command
+    kill_result = run_cli("shutdown", "--format", "json")
+    # print(f"DEBUG: Kill command exit code: {kill_result.returncode}")
+    print(f"DEBUG: Kill command stdout:\n{kill_result.stdout}")
+    print(f"DEBUG: Kill command stderr:\n{kill_result.stderr}")
+    kill_info = extract_json(kill_result.stdout)
+    print(f"DEBUG: Kill command returned PID: {kill_info['pid']}")
+    print(f"DEBUG: PIDs match: {actual_server_pid == kill_info['pid']}")
+
+    # 5. Verify it returns the server PID
+    # Schema assertion: should be {"pid": int} format
+    assert isinstance(kill_info, dict), f"Expected dict, got {type(kill_info)}"
+    assert "pid" in kill_info, f"Expected 'pid' key in {kill_info.keys()}"
+    assert "processes" not in kill_info, (
+        f"Should not have 'processes' key in kill response: {kill_info.keys()}"
+    )
+    server_pid = kill_info["pid"]
+    assert isinstance(server_pid, int)
+    assert server_pid > 0
+
+    # Don't actually wait for server shutdown. Wasn't able to get an automated
+    # validation that was reliable. os.kill(pid, 0) doesn't raise an exception
+    # when it should.

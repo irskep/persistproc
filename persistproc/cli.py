@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .shutdown import shutdown_server
 from .logging_utils import CLI_LOGGER, setup_logging
 from .run import run
 from .serve import serve
@@ -49,6 +50,14 @@ class ToolAction:
 
 
 @dataclass
+class ShutdownAction:
+    """Represents the 'shutdown' command."""
+
+    port: int
+    format: str
+
+
+@dataclass
 class CLIMetadata:
     """Common CLI metadata not specific to any action."""
 
@@ -56,7 +65,7 @@ class CLIMetadata:
     log_path: Path
 
 
-CLIAction = ServeAction | RunAction | ToolAction
+CLIAction = ServeAction | RunAction | ToolAction | ShutdownAction
 
 
 def get_default_data_dir() -> Path:
@@ -212,6 +221,13 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
         help="The program to run (e.g. 'python' or 'ls'). If the string contains spaces, it will be shell-split unless additional arguments are provided separately.",
     )
     p_run.add_argument("args", nargs="*", help="Arguments to the program")
+
+    # Shutdown command
+    p_shutdown = subparsers.add_parser(  # noqa: F841
+        "shutdown",
+        help="Shutdown the persistproc server by sending SIGINT",
+        parents=[common_parser],
+    )
 
     # ------------------------------------------------------------------
     # Tool sub-commands – accept *both* snake_case and kebab-case variants
@@ -406,6 +422,8 @@ def parse_cli(argv: list[str]) -> tuple[CLIAction, CLIMetadata]:
             port=port_val,
             label=getattr(args, "label", None),
         )
+    elif args.command == "shutdown":
+        action = ShutdownAction(port=port_val, format=format_val)
     elif args.command in tools_by_name:
         # Ensure tool sub-commands always have a `port` attribute so
         # downstream code doesn't crash when the user omitted --port.
@@ -426,7 +444,7 @@ def handle_cli_action(action: CLIAction, metadata: CLIMetadata) -> None:
     CLI_LOGGER.info("Verbose log for this run: %s", shlex.quote(str(metadata.log_path)))
 
     if isinstance(action, ServeAction):
-        serve(action.port, action.data_dir)
+        serve(action.port, action.data_dir, metadata.log_path)
     elif isinstance(action, RunAction):
         CLI_LOGGER.info(
             "Running command: %s %s", action.command, " ".join(action.run_args)
@@ -440,6 +458,8 @@ def handle_cli_action(action: CLIAction, metadata: CLIMetadata) -> None:
             port=action.port,
             label=action.label,
         )
+    elif isinstance(action, ShutdownAction):
+        shutdown_server(action.port, action.format)
     elif isinstance(action, ToolAction):
         action.tool.call_with_args(action.args, action.port, action.format)
 
@@ -467,6 +487,7 @@ __all__ = [
     "ServeAction",
     "RunAction",
     "ToolAction",
+    "ShutdownAction",
     "CLIAction",
     "CLIMetadata",
 ]

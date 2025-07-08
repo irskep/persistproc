@@ -73,6 +73,7 @@ target-version = "py310"
 extend-select = [
     "UP",   # pyupgrade
     "B",    # flake8-bugbear
+    "PLC0415",  # import-outside-toplevel (disallow imports inside functions)
 ]
 
 # Only ignore rules that are problematic for this specific project

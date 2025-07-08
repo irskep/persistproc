@@ -478,14 +478,17 @@ Specify working directory context when matching by command:
 > persistproc output --working-directory /path/to/project npm run dev
 ```
 
-## `kill_persistproc`
+## `shutdown`
 
-Kill all managed processes and get the PID of the persistproc server.
+!!! note "Command-line only"
+    This command is only available from the command line, not as an MCP tool. It gracefully shuts down the server by sending SIGINT.
 
-<!-- persistproc kill_persistproc --help -->
+Gracefully shut down the persistproc server by sending it a SIGINT signal (equivalent to pressing Ctrl+C on the server process).
+
+<!-- persistproc shutdown --help -->
 ```
-usage: persistproc kill_persistproc [-h] [--port PORT] [--data-dir DATA_DIR]
-                                    [-v] [-q] [--format {text,json}]
+usage: persistproc shutdown [-h] [--port PORT] [--data-dir DATA_DIR]
+                            [-v] [-q] [--format {text,json}]
 
 options:
   -h, --help            show this help message and exit
@@ -503,15 +506,12 @@ options:
 **Examples**
 
 ```bash
-> persistproc kill_persistproc
-Killed persistproc server with PID: 8947
+> persistproc shutdown
+Sending SIGINT to persistproc server (PID 8947)
+{"pid": 8947}
 ```
 
-Get structured output showing the server PID:
-
-```bash
-> persistproc kill_persistproc --format json
-```
+The command outputs JSON with the server's process ID for compatibility with automation tools and test suites.
 
 ## `ctrl`
 

@@ -6,6 +6,7 @@ import pytest
 
 from persistproc.cli import (
     CLIMetadata,
+    ShutdownAction,
     RunAction,
     ServeAction,
     ToolAction,
@@ -823,3 +824,27 @@ def test_parse_cli_start_mixed_flags_and_args(mock_setup_logging):
     assert action.args.command_ == "python"
     assert action.args.args == ["-m", "uvicorn", "app:main", "--port", "8000"]
     assert action.args.label == "web"
+
+
+def test_parse_cli_shutdown(mock_setup_logging):
+    """Test `persistproc shutdown`."""
+    action, metadata = parse_cli(["shutdown"])
+    assert isinstance(action, ShutdownAction)
+    assert action.port == get_default_port()
+    assert action.format == "json"  # Test env sets PERSISTPROC_FORMAT=json
+
+
+def test_parse_cli_shutdown_with_port(mock_setup_logging):
+    """Test `persistproc shutdown --port 9999`."""
+    action, metadata = parse_cli(["shutdown", "--port", "9999"])
+    assert isinstance(action, ShutdownAction)
+    assert action.port == 9999
+    assert action.format == "json"  # Test env sets PERSISTPROC_FORMAT=json
+
+
+def test_parse_cli_shutdown_with_text_format(mock_setup_logging):
+    """Test `persistproc shutdown --format text`."""
+    action, metadata = parse_cli(["shutdown", "--format", "text"])
+    assert isinstance(action, ShutdownAction)
+    assert action.port == get_default_port()
+    assert action.format == "text"

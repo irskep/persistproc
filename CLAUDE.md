@@ -13,6 +13,8 @@ Key files:
 
 Use `uv run python -m pytest` to run tests. For development, use `uv run python -m pytest -x --maxfail=3` to stop after 3 failures.
 
+There is critical code in tests/conftest.py and tests/helpers.py. Some defaults are changed via env vars.
+
 ## Linting and Type Checking
 
 - Linting: `uv run ruff check`
@@ -51,7 +53,7 @@ Steps taken to verify:
 Web links supporting my changes:
 - (list them)
 
-I solemnly swear there are no further steps I can take to verify the changes within the boundaries set for me.
+I solemnly swear there are no further steps I can take to verify the changes within the boundaries set for me. I ran the entire test suite just now, which you can see in the output above. If you can't see a complete passing run of all tests, I admit this whole report is bullshit because I didn't do everything you asked.
 </ReportFormat>
 
 ## Pitfalls
