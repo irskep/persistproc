@@ -117,16 +117,16 @@ def test_parse_cli_restart_process_by_command(mock_setup_logging):
     assert action.args.args == ["10"]
 
 
-def test_parse_cli_restart_process_by_command_and_cwd(mock_setup_logging):
+def test_parse_cli_restart_process_by_command_and_cwd(mock_setup_logging, tmp_path):
     """Test `persistproc restart sleep 10 --working-directory /tmp`."""
     action, metadata = parse_cli(
-        ["restart", "--working-directory", "/tmp", "sleep", "10"]
+        ["restart", "--working-directory", str(tmp_path), "sleep", "10"]
     )
     assert isinstance(action, ToolAction)
     assert action.tool.name == "restart"
     assert action.args.target == "sleep"
     assert action.args.args == ["10"]
-    assert action.args.working_directory == "/tmp"
+    assert action.args.working_directory == str(tmp_path)
 
 
 def test_parse_cli_data_dir_and_verbose_for_logging(mock_setup_logging):

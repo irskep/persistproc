@@ -70,12 +70,12 @@ class TestStopProcessResultFormatter:
 
 
 class TestListProcessesResultFormatter:
-    def test_format_multiple_processes(self):
+    def test_format_multiple_processes(self, tmp_path):
         processes = [
             ProcessInfo(
                 pid=1234,
                 command=["python", "script1.py"],
-                working_directory="/tmp",
+                working_directory=str(tmp_path),
                 status="running",
                 label="process 1",
             ),
@@ -92,7 +92,7 @@ class TestListProcessesResultFormatter:
 
         assert "PID 1234: process 1 (running)" in formatted
         assert "Command: python script1.py" in formatted
-        assert "Working directory: /tmp" in formatted
+        assert f"Working directory: {tmp_path}" in formatted
         assert "PID 5678: process 2 (stopped)" in formatted
         assert "Command: node server.js" in formatted
         assert "Working directory: /app" in formatted
@@ -102,12 +102,12 @@ class TestListProcessesResultFormatter:
         formatted = format_list_processes_result(result)
         assert formatted == "No processes running"
 
-    def test_format_single_process(self):
+    def test_format_single_process(self, tmp_path):
         processes = [
             ProcessInfo(
                 pid=1234,
                 command=["python", "script.py"],
-                working_directory="/tmp",
+                working_directory=str(tmp_path),
                 status="running",
                 label="test process",
             )
@@ -117,7 +117,7 @@ class TestListProcessesResultFormatter:
 
         assert "PID 1234: test process (running)" in formatted
         assert "Command: python script.py" in formatted
-        assert "Working directory: /tmp" in formatted
+        assert f"Working directory: {tmp_path}" in formatted
         # Should not end with empty line for single process
         assert not formatted.endswith("\n\n")
 

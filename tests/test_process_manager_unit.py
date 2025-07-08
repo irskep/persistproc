@@ -40,9 +40,9 @@ def process_manager(fake_registry, temp_dir):
 class TestGetLabel:
     """Test the get_label utility function."""
 
-    def test_explicit_label(self):
+    def test_explicit_label(self, tmp_path):
         """Test that explicit label is used when provided."""
-        result = get_label("my-custom-label", "python script.py", "/tmp")
+        result = get_label("my-custom-label", "python script.py", str(tmp_path))
         assert result == "my-custom-label"
 
     def test_generated_label(self):
@@ -50,10 +50,10 @@ class TestGetLabel:
         result = get_label(None, "python script.py", "/home/user")
         assert result == "python script.py in /home/user"
 
-    def test_empty_explicit_label(self):
+    def test_empty_explicit_label(self, tmp_path):
         """Test that empty string is treated as no explicit label."""
-        result = get_label("", "echo hello", "/tmp")
-        assert result == "echo hello in /tmp"
+        result = get_label("", "echo hello", str(tmp_path))
+        assert result == f"echo hello in {tmp_path}"
 
 
 class TestProcessManagerInit:
@@ -83,7 +83,7 @@ class TestProcessManagerStart:
     """Test ProcessManager.start() method."""
 
     @patch("persistproc.process_manager.subprocess.Popen")
-    def test_start_success(self, mock_popen, process_manager):
+    def test_start_success(self, mock_popen, process_manager, tmp_path):
         """Test successful process start."""
         # Setup fake process
         fake_proc = FakeSubprocessPopen(pid=1234)
@@ -91,7 +91,7 @@ class TestProcessManagerStart:
 
         result = process_manager.start(
             command="echo hello",
-            working_directory=Path("/tmp"),
+            working_directory=tmp_path,
             environment={"TEST": "value"},
             label="test-echo",
         )
@@ -110,23 +110,23 @@ class TestProcessManagerStart:
         assert stored_proc.label == "test-echo"
 
     @patch("persistproc.process_manager.subprocess.Popen")
-    def test_start_with_generated_label(self, mock_popen, process_manager, temp_dir):
+    def test_start_with_generated_label(self, mock_popen, process_manager, tmp_path):
         """Test process start with auto-generated label."""
         fake_proc = FakeSubprocessPopen(pid=5678)
         mock_popen.return_value = fake_proc
 
         result = process_manager.start(
             command="python script.py",
-            working_directory=temp_dir,
+            working_directory=tmp_path,
             label=None,  # No explicit label
         )
 
-        assert result.label == f"python script.py in {temp_dir}"
+        assert result.label == f"python script.py in {tmp_path}"
 
         stored_proc = process_manager._storage.get_process_snapshot(5678)
-        assert stored_proc.label == f"python script.py in {temp_dir}"
+        assert stored_proc.label == f"python script.py in {tmp_path}"
 
-    def test_start_duplicate_label_error(self, process_manager):
+    def test_start_duplicate_label_error(self, process_manager, tmp_path):
         """Test that starting process with duplicate running label fails."""
         # Add a running process with same label
         existing_proc = create_fake_proc_entry(
@@ -136,7 +136,7 @@ class TestProcessManagerStart:
 
         # Try to start another with same label
         result = process_manager.start(
-            command="echo test", working_directory=Path("/tmp"), label="test-label"
+            command="echo test", working_directory=tmp_path, label="test-label"
         )
 
         assert result.error is not None
@@ -153,24 +153,24 @@ class TestProcessManagerStart:
         assert "does not exist" in result.error
 
     @patch("persistproc.process_manager.subprocess.Popen")
-    def test_start_file_not_found(self, mock_popen, process_manager):
+    def test_start_file_not_found(self, mock_popen, process_manager, tmp_path):
         """Test starting non-existent command."""
         mock_popen.side_effect = FileNotFoundError("nonexistent-command")
 
         result = process_manager.start(
-            command="nonexistent-command", working_directory=Path("/tmp")
+            command="nonexistent-command", working_directory=tmp_path
         )
 
         assert result.error is not None
         assert "Command not found" in result.error
 
     @patch("persistproc.process_manager.subprocess.Popen")
-    def test_start_permission_error(self, mock_popen, process_manager):
+    def test_start_permission_error(self, mock_popen, process_manager, tmp_path):
         """Test starting command with permission error."""
         mock_popen.side_effect = PermissionError("permission denied")
 
         result = process_manager.start(
-            command="restricted-command", working_directory=Path("/tmp")
+            command="restricted-command", working_directory=tmp_path
         )
 
         assert result.error is not None
@@ -298,14 +298,14 @@ class TestProcessManagerRestart:
         assert "not found" in result.error.lower()
 
     @patch("persistproc.process_manager.subprocess.Popen")
-    def test_restart_success(self, mock_popen, process_manager):
+    def test_restart_success(self, mock_popen, process_manager, tmp_path):
         """Test successful restart."""
         # Setup original process
         original_proc = FakeSubprocessPopen(pid=1234, returncode=None)
         proc_entry = create_fake_proc_entry(
             pid=1234,
             command=["python", "script.py"],
-            working_directory="/tmp",
+            working_directory=str(tmp_path),
             status="running",
             proc=original_proc,
         )

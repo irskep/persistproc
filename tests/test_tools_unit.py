@@ -130,7 +130,7 @@ class TestMCPRequest:
 class TestStartProcessTool:
     """Test the StartProcessTool class."""
 
-    def test_apply_method(self):
+    def test_apply_method(self, tmp_path):
         """Test the _apply static method."""
         # Create a mock process manager
         mock_manager = MagicMock(spec=ProcessManager)
@@ -140,7 +140,7 @@ class TestStartProcessTool:
         result = StartProcessTool._apply(
             mock_manager,
             "python -m http.server",
-            "/tmp",
+            str(tmp_path),
             {"VAR": "value"},
             "web-server",
         )
@@ -148,7 +148,7 @@ class TestStartProcessTool:
         assert result == mock_result
         mock_manager.start.assert_called_once_with(
             command="python -m http.server",
-            working_directory=Path("/tmp"),
+            working_directory=Path(str(tmp_path)),
             environment={"VAR": "value"},
             label="web-server",
         )
@@ -168,13 +168,13 @@ class TestStartProcessTool:
         assert any("command_" in args for args in call_args)
 
     @patch("persistproc.tools.execute_mcp_request")
-    def test_call_with_args(self, mock_mcp_request):
+    def test_call_with_args(self, mock_mcp_request, tmp_path):
         """Test CLI execution."""
         tool = StartProcessTool()
         args = Namespace(
             command_="python",
             args=["-m", "http.server"],
-            working_directory="/tmp",
+            working_directory=str(tmp_path),
             label="test-label",
         )
 
@@ -186,7 +186,7 @@ class TestStartProcessTool:
             8947,
             {
                 "command": "python -m http.server",
-                "working_directory": "/tmp",
+                "working_directory": str(tmp_path),
                 "environment": {"TEST_VAR": "value"},
                 "label": "test-label",
             },
@@ -194,10 +194,12 @@ class TestStartProcessTool:
         )
 
     @patch("persistproc.tools.execute_mcp_request")
-    def test_call_with_args_no_extra_args(self, mock_mcp_request):
+    def test_call_with_args_no_extra_args(self, mock_mcp_request, tmp_path):
         """Test CLI execution with single command."""
         tool = StartProcessTool()
-        args = Namespace(command_="echo", args=[], working_directory="/tmp", label=None)
+        args = Namespace(
+            command_="echo", args=[], working_directory=str(tmp_path), label=None
+        )
 
         with patch.dict(os.environ, {"TEST_VAR": "value"}, clear=True):
             tool.call_with_args(args, 8947)
@@ -226,19 +228,22 @@ class TestListProcessesTool:
             pid=None, command_or_label=None, working_directory=None
         )
 
-    def test_apply_method_with_filters(self):
+    def test_apply_method_with_filters(self, tmp_path):
         """Test the _apply static method with filters."""
         mock_manager = MagicMock(spec=ProcessManager)
         mock_result = MagicMock()
         mock_manager.list.return_value = mock_result
 
         result = ListProcessesTool._apply(
-            mock_manager, pid=123, command_or_label="python", working_directory="/tmp"
+            mock_manager,
+            pid=123,
+            command_or_label="python",
+            working_directory=str(tmp_path),
         )
 
         assert result == mock_result
         mock_manager.list.assert_called_once_with(
-            pid=123, command_or_label="python", working_directory="/tmp"
+            pid=123, command_or_label="python", working_directory=str(tmp_path)
         )
 
     def test_build_subparser(self):
@@ -266,10 +271,12 @@ class TestListProcessesTool:
         mock_mcp_request.assert_called_once_with("list", 8947, format="json")
 
     @patch("persistproc.tools.execute_mcp_request")
-    def test_call_with_args_with_filters(self, mock_mcp_request):
+    def test_call_with_args_with_filters(self, mock_mcp_request, tmp_path):
         """Test CLI execution with filters."""
         tool = ListProcessesTool()
-        args = Namespace(pid=123, command_or_label="python", working_directory="/tmp")
+        args = Namespace(
+            pid=123, command_or_label="python", working_directory=str(tmp_path)
+        )
 
         tool.call_with_args(args, 8947)
 
@@ -279,7 +286,7 @@ class TestListProcessesTool:
             {
                 "pid": 123,
                 "command_or_label": "python",
-                "working_directory": "/tmp",
+                "working_directory": str(tmp_path),
             },
             "json",
         )
@@ -288,7 +295,7 @@ class TestListProcessesTool:
 class TestStopProcessTool:
     """Test the StopProcessTool class."""
 
-    def test_apply_method(self):
+    def test_apply_method(self, tmp_path):
         """Test the _apply static method."""
         mock_manager = MagicMock(spec=ProcessManager)
         mock_result = MagicMock()
@@ -298,7 +305,7 @@ class TestStopProcessTool:
             mock_manager,
             pid=123,
             command_or_label="python",
-            working_directory="/tmp",
+            working_directory=str(tmp_path),
             force=True,
             label="test",
         )
@@ -307,14 +314,14 @@ class TestStopProcessTool:
         mock_manager.stop.assert_called_once_with(
             pid=123,
             command_or_label="python",
-            working_directory=Path("/tmp"),
+            working_directory=Path(str(tmp_path)),
             force=True,
             label="test",
         )
 
     @patch("persistproc.tools.execute_mcp_request")
     @patch("persistproc.tools._parse_target_to_pid_or_command_or_label")
-    def test_call_with_args(self, mock_parse, mock_mcp_request):
+    def test_call_with_args(self, mock_parse, mock_mcp_request, tmp_path):
         """Test CLI execution."""
         mock_parse.return_value = (None, "python script.py")
 
@@ -322,7 +329,7 @@ class TestStopProcessTool:
         args = Namespace(
             target="python",
             args=["script.py"],
-            working_directory="/tmp",
+            working_directory=str(tmp_path),
             force=True,
             port=8947,
         )
@@ -336,7 +343,7 @@ class TestStopProcessTool:
             {
                 "pid": None,
                 "command_or_label": "python script.py",
-                "working_directory": "/tmp",
+                "working_directory": str(tmp_path),
                 "force": True,
             },
             "json",
@@ -346,7 +353,7 @@ class TestStopProcessTool:
 class TestRestartProcessTool:
     """Test the RestartProcessTool class."""
 
-    def test_apply_method(self):
+    def test_apply_method(self, tmp_path):
         """Test the _apply static method."""
         mock_manager = MagicMock(spec=ProcessManager)
         mock_result = MagicMock()
@@ -356,7 +363,7 @@ class TestRestartProcessTool:
             mock_manager,
             pid=123,
             command_or_label="python",
-            working_directory="/tmp",
+            working_directory=str(tmp_path),
             label="test",
         )
 
@@ -364,7 +371,7 @@ class TestRestartProcessTool:
         mock_manager.restart.assert_called_once_with(
             pid=123,
             command_or_label="python",
-            working_directory=Path("/tmp"),
+            working_directory=Path(str(tmp_path)),
             label="test",
         )
 
@@ -372,7 +379,7 @@ class TestRestartProcessTool:
 class TestGetProcessOutputTool:
     """Test the GetProcessOutputTool class."""
 
-    def test_apply_method(self):
+    def test_apply_method(self, tmp_path):
         """Test the _apply static method."""
         mock_manager = MagicMock(spec=ProcessManager)
         mock_result = MagicMock()
@@ -388,7 +395,7 @@ class TestGetProcessOutputTool:
             since_time="2024-01-01T09:00:00Z",
             pid=123,
             command_or_label="python",
-            working_directory="/tmp",
+            working_directory=str(tmp_path),
         )
 
         assert result == mock_result
@@ -399,7 +406,7 @@ class TestGetProcessOutputTool:
             before_time="2024-01-01T10:00:00Z",
             since_time="2024-01-01T09:00:00Z",
             command_or_label="python",
-            working_directory=Path("/tmp"),
+            working_directory=Path(str(tmp_path)),
         )
 
 
