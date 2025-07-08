@@ -99,7 +99,6 @@ The server exposes the following tools:
 | ctrl | Unified process control: start, stop, or restart processes. |
 | list | List all managed processes and their status. Can optionally filter by pid, command, or working directory and provides log paths. |
 | output | Retrieve captured output from a process. |
-| kill_persistproc | Kill all managed processes and get the PID of the persistproc server. |
 
 ## Getting started
 

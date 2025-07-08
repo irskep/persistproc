@@ -478,17 +478,17 @@ Specify working directory context when matching by command:
 > persistproc output --working-directory /path/to/project npm run dev
 ```
 
-## `kill-persistproc`
+## `shutdown`
 
 !!! note "Command-line only"
     This command is only available from the command line, not as an MCP tool. It gracefully shuts down the server by sending SIGINT.
 
 Gracefully shut down the persistproc server by sending it a SIGINT signal (equivalent to pressing Ctrl+C on the server process).
 
-<!-- persistproc kill-persistproc --help -->
+<!-- persistproc shutdown --help -->
 ```
-usage: persistproc kill-persistproc [-h] [--port PORT] [--data-dir DATA_DIR]
-                                    [-v] [-q] [--format {text,json}]
+usage: persistproc shutdown [-h] [--port PORT] [--data-dir DATA_DIR]
+                            [-v] [-q] [--format {text,json}]
 
 options:
   -h, --help            show this help message and exit
@@ -506,7 +506,7 @@ options:
 **Examples**
 
 ```bash
-> persistproc kill-persistproc
+> persistproc shutdown
 Sending SIGINT to persistproc server (PID 8947)
 {"pid": 8947}
 ```

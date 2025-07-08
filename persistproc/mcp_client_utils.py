@@ -10,7 +10,7 @@ from fastmcp.exceptions import ToolError
 from .client import make_client
 from .logging_utils import CLI_LOGGER
 from .process_types import (
-    KillPersistprocResult,
+    ShutdownResult,
     ListProcessesResult,
     ProcessInfo,
     ProcessOutputResult,
@@ -71,7 +71,7 @@ def _create_result_object(tool_name: str, result_data: dict) -> object | None:
         "list": ListProcessesResult,
         "output": ProcessOutputResult,
         "restart": RestartProcessResult,
-        "kill_persistproc": KillPersistprocResult,
+        "shutdown": ShutdownResult,
     }
 
     # Handle ctrl tool which can perform start/stop/restart actions

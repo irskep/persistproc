@@ -20,7 +20,7 @@ from pathlib import Path
 from persistproc.log_manager import LogManager
 from persistproc.process_storage_manager import ProcessStorageManager, _ProcEntry
 from persistproc.process_types import (
-    KillPersistprocResult,
+    ShutdownResult,
     ListProcessesResult,
     ProcessControlResult,
     ProcessInfo,
@@ -112,7 +112,7 @@ class ProcessManager:  # noqa: D101
     # Lifecycle helpers
     # ------------------------------------------------------------------
 
-    def shutdown(self) -> None:  # noqa: D401
+    def shutdown_monitor(self) -> None:  # noqa: D401
         """Signal the monitor thread to exit (used by tests)."""
         self._storage.stop_event_set()
         if self._monitor_thread:
@@ -719,19 +719,19 @@ class ProcessManager:  # noqa: D101
         else:
             return ProcessOutputResult(output=[], lines_before=0, lines_after=0)
 
-    def kill_persistproc(self) -> KillPersistprocResult:  # noqa: D401
-        """Kill all managed processes and then kill the server process."""
+    def shutdown(self) -> ShutdownResult:  # noqa: D401
+        """Shutdown all managed processes and then shutdown the server process."""
         server_pid = os.getpid()
-        logger.info("event=kill_persistproc_start server_pid=%s", server_pid)
+        logger.info("event=shutdown_start server_pid=%s", server_pid)
 
         # Get a snapshot of all processes to kill
         processes_to_kill = self._storage.get_processes_values_snapshot()
 
         if not processes_to_kill:
-            logger.debug("event=kill_persistproc_no_processes")
+            logger.debug("event=shutdown_no_processes")
         else:
             logger.debug(
-                "event=kill_persistproc_killing_processes count=%s",
+                "event=shutdown_killing_processes count=%s",
                 len(processes_to_kill),
             )
 
@@ -741,7 +741,7 @@ class ProcessManager:  # noqa: D101
         for ent in processes_to_kill:
             if ent.status == "running":
                 logger.debug(
-                    "event=kill_persistproc_stopping pid=%s command=%s",
+                    "event=shutdown_stopping pid=%s command=%s",
                     ent.pid,
                     " ".join(ent.command),
                 )
@@ -749,37 +749,35 @@ class ProcessManager:  # noqa: D101
                     result = self.stop(ent.pid, force=True)
                     if result.error is not None:
                         unkilled_processes.append((ent.pid, result.error))
-                    logger.debug("event=kill_persistproc_stopped pid=%s", ent.pid)
+                    logger.debug("event=shutdown_stopped pid=%s", ent.pid)
                 except Exception as e:
-                    logger.warning(
-                        "event=kill_persistproc_failed pid=%s error=%s", ent.pid, e
-                    )
+                    logger.warning("event=shutdown_failed pid=%s error=%s", ent.pid, e)
             else:
                 logger.debug(
-                    "event=kill_persistproc_skip pid=%s status=%s", ent.pid, ent.status
+                    "event=shutdown_skip pid=%s status=%s", ent.pid, ent.status
                 )
 
-        logger.info("event=kill_persistproc_complete server_pid=%s", server_pid)
+        logger.info("event=shutdown_complete server_pid=%s", server_pid)
 
         if unkilled_processes:
             logger.warning(
-                "event=kill_persistproc_failed_to_kill_processes count=%s",
+                "event=shutdown_failed_to_kill_processes count=%s",
                 len(unkilled_processes),
             )
             for pid, error in unkilled_processes:
                 logger.warning(
-                    "event=kill_persistproc_failed_to_kill pid=%s error=%s", pid, error
+                    "event=shutdown_failed_to_kill pid=%s error=%s", pid, error
                 )
 
         # Schedule server termination after a brief delay to allow response to be sent
         def _kill_server():
             time.sleep(0.1)  # Brief delay to allow response to be sent
-            logger.info("event=kill_persistproc_terminating_server pid=%s", server_pid)
+            logger.info("event=shutdown_terminating_server pid=%s", server_pid)
             os.kill(server_pid, signal.SIGTERM)
 
         threading.Thread(target=_kill_server, daemon=True).start()
 
-        return KillPersistprocResult(
+        return ShutdownResult(
             pid=server_pid,
             error="\n".join([f"{pid}: {error}" for pid, error in unkilled_processes]),
         )

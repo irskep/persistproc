@@ -53,7 +53,7 @@ Steps taken to verify:
 Web links supporting my changes:
 - (list them)
 
-I solemnly swear there are no further steps I can take to verify the changes within the boundaries set for me.
+I solemnly swear there are no further steps I can take to verify the changes within the boundaries set for me. I ran the entire test suite just now, which you can see in the output above. If you can't see a complete passing run of all tests, I admit this whole report is bullshit because I didn't do everything you asked.
 </ReportFormat>
 
 ## Pitfalls

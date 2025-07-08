@@ -52,9 +52,9 @@ def start_persistproc() -> subprocess.Popen[str]:
 
 
 def kill_persistproc(proc: subprocess.Popen[str]) -> None:
-    """Kill the persistproc server."""
-    # call kill-persistproc tool
-    result = run_cli("kill-persistproc")
+    """Shutdown the persistproc server."""
+    # call shutdown tool
+    result = run_cli("shutdown")
     pid = extract_json(result.stdout)["pid"]
     # loop until given pid is no longer running
     while os.path.exists(f"/proc/{pid}"):

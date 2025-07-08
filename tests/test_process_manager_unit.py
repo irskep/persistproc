@@ -421,23 +421,23 @@ class TestProcessManagerListWithLogPaths:
         assert len(result.processes) == 0
 
 
-class TestProcessManagerKillPersistproc:
-    """Test ProcessManager.kill_persistproc() method."""
+class TestProcessManagerShutdownMethod:
+    """Test ProcessManager.shutdown() method."""
 
-    def test_kill_persistproc_no_processes(self, process_manager):
-        """Test killing persistproc with no managed processes."""
+    def test_shutdown_no_processes(self, process_manager):
+        """Test shutting down persistproc with no managed processes."""
         with (
             patch("os.getpid", return_value=12345),
             patch("threading.Thread") as mock_thread,
         ):
-            result = process_manager.kill_persistproc()
+            result = process_manager.shutdown()
 
             assert result.pid == 12345
             # Should start a thread to kill the server
             mock_thread.assert_called_once()
 
-    def test_kill_persistproc_with_processes(self, process_manager):
-        """Test killing persistproc with managed processes."""
+    def test_shutdown_with_processes(self, process_manager):
+        """Test shutting down persistproc with managed processes."""
         # Add some running processes
         proc1 = create_fake_proc_entry(pid=1234, status="running")
         proc2 = create_fake_proc_entry(pid=5678, status="exited")
@@ -450,7 +450,7 @@ class TestProcessManagerKillPersistproc:
             patch("threading.Thread") as mock_thread,
             patch.object(process_manager, "stop") as mock_stop,
         ):
-            result = process_manager.kill_persistproc()
+            result = process_manager.shutdown()
 
             assert result.pid == 12345
             # Should only try to stop running processes
@@ -459,12 +459,12 @@ class TestProcessManagerKillPersistproc:
 
 
 class TestProcessManagerShutdown:
-    """Test ProcessManager.shutdown() method."""
+    """Test ProcessManager.shutdown_monitor() method."""
 
     def test_shutdown_stops_monitoring(self, process_manager):
-        """Test that shutdown stops the monitoring thread."""
+        """Test that shutdown_monitor stops the monitoring thread."""
         with patch.object(process_manager._storage, "stop_event_set") as mock_stop:
-            process_manager.shutdown()
+            process_manager.shutdown_monitor()
             mock_stop.assert_called_once()
 
     def test_shutdown_with_monitor_thread(self, fake_registry, temp_dir):
@@ -475,7 +475,7 @@ class TestProcessManagerShutdown:
 
             pm = ProcessManager(monitor=True, registry=fake_registry, data_dir=temp_dir)
 
-            pm.shutdown()
+            pm.shutdown_monitor()
 
             # Should join the thread
             mock_thread.join.assert_called_once_with(timeout=2)

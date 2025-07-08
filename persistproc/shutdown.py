@@ -1,4 +1,4 @@
-"""Kill persistproc server functionality."""
+"""Shutdown persistproc server functionality."""
 
 import asyncio
 import json
@@ -7,14 +7,14 @@ import signal
 
 from .client import make_client
 from .logging_utils import CLI_LOGGER
-from .process_types import KillPersistprocResult
+from .process_types import ShutdownResult
 from .text_formatters import format_result
 
-__all__ = ["kill_persistproc_server"]
+__all__ = ["shutdown_server"]
 
 
-def kill_persistproc_server(port: int, format_output: str = "text") -> None:
-    """Kill the persistproc server by finding the process listening on the port and sending SIGINT."""
+def shutdown_server(port: int, format_output: str = "text") -> None:
+    """Shutdown the persistproc server by finding the process listening on the port and sending SIGINT."""
     try:
         # First verify server is running by connecting to it
         try:
@@ -25,13 +25,13 @@ def kill_persistproc_server(port: int, format_output: str = "text") -> None:
                     return results is not None
 
             if not asyncio.run(verify_server()):
-                error_result = KillPersistprocResult(
+                error_result = ShutdownResult(
                     error="Cannot connect to persistproc server - it may not be running"
                 )
                 _output_result(error_result, format_output)
                 return
         except Exception:
-            error_result = KillPersistprocResult(
+            error_result = ShutdownResult(
                 error="Cannot connect to persistproc server - it may not be running"
             )
             _output_result(error_result, format_output)
@@ -50,14 +50,14 @@ def kill_persistproc_server(port: int, format_output: str = "text") -> None:
 
             list_data = asyncio.run(get_server_info())
             if list_data is None:
-                error_result = KillPersistprocResult(
+                error_result = ShutdownResult(
                     error="No response from server for list tool"
                 )
                 _output_result(error_result, format_output)
                 return
 
             if "processes" not in list_data or not list_data["processes"]:
-                error_result = KillPersistprocResult(
+                error_result = ShutdownResult(
                     error="Server process not found in list response"
                 )
                 _output_result(error_result, format_output)
@@ -66,14 +66,12 @@ def kill_persistproc_server(port: int, format_output: str = "text") -> None:
             server_process = list_data["processes"][0]
             server_pid = server_process.get("pid")
             if not isinstance(server_pid, int) or server_pid <= 0:
-                error_result = KillPersistprocResult(
-                    error=f"Invalid server PID: {server_pid}"
-                )
+                error_result = ShutdownResult(error=f"Invalid server PID: {server_pid}")
                 _output_result(error_result, format_output)
                 return
 
         except Exception as e:
-            error_result = KillPersistprocResult(error=f"Failed to get server PID: {e}")
+            error_result = ShutdownResult(error=f"Failed to get server PID: {e}")
             _output_result(error_result, format_output)
             return
 
@@ -82,25 +80,25 @@ def kill_persistproc_server(port: int, format_output: str = "text") -> None:
         os.kill(server_pid, signal.SIGINT)
 
         # Output the result
-        success_result = KillPersistprocResult(pid=server_pid)
+        success_result = ShutdownResult(pid=server_pid)
         _output_result(success_result, format_output)
 
     except ProcessLookupError:
-        error_result = KillPersistprocResult(
+        error_result = ShutdownResult(
             error=f"Server process (PID {server_pid}) not found - it may have already exited"
         )
         _output_result(error_result, format_output)
     except PermissionError:
-        error_result = KillPersistprocResult(
+        error_result = ShutdownResult(
             error=f"Permission denied when trying to signal server process (PID {server_pid})"
         )
         _output_result(error_result, format_output)
     except Exception as e:
-        error_result = KillPersistprocResult(error=f"Unexpected error: {e}")
+        error_result = ShutdownResult(error=f"Unexpected error: {e}")
         _output_result(error_result, format_output)
 
 
-def _output_result(result: KillPersistprocResult, format_output: str) -> None:
+def _output_result(result: ShutdownResult, format_output: str) -> None:
     """Output the result in the requested format."""
     if format_output == "json":
         if result.error:

@@ -7,7 +7,7 @@ from persistproc.text_formatters import (
     format_list_processes_result,
     format_process_output_result,
     format_restart_process_result,
-    format_kill_persistproc_result,
+    format_shutdown_result,
     format_result,
 )
 from persistproc.process_types import (
@@ -17,7 +17,7 @@ from persistproc.process_types import (
     ProcessInfo,
     ProcessOutputResult,
     RestartProcessResult,
-    KillPersistprocResult,
+    ShutdownResult,
 )
 
 
@@ -178,16 +178,16 @@ class TestRestartProcessResultFormatter:
         assert formatted == "Process restart failed"
 
 
-class TestKillPersistprocResultFormatter:
-    def test_format_successful_kill(self):
-        result = KillPersistprocResult(pid=1234)
-        formatted = format_kill_persistproc_result(result)
-        assert formatted == "Killed persistproc server with PID: 1234"
+class TestShutdownResultFormatter:
+    def test_format_successful_shutdown(self):
+        result = ShutdownResult(pid=1234)
+        formatted = format_shutdown_result(result)
+        assert formatted == "Shutdown persistproc server with PID: 1234"
 
-    def test_format_error_kill(self):
-        result = KillPersistprocResult(pid=1234, error="Failed to kill")
-        formatted = format_kill_persistproc_result(result)
-        assert formatted == "Error: Failed to kill"
+    def test_format_error_shutdown(self):
+        result = ShutdownResult(pid=1234, error="Failed to shutdown")
+        formatted = format_shutdown_result(result)
+        assert formatted == "Error: Failed to shutdown"
 
 
 class TestFormatResult:
@@ -211,7 +211,7 @@ class TestFormatResult:
             ListProcessesResult,
             ProcessOutputResult,
             RestartProcessResult,
-            KillPersistprocResult,
+            ShutdownResult,
         ]
 
         for result_type in result_types:
@@ -224,7 +224,7 @@ class TestFormatResult:
             # Create a minimal instance of each result type
             if result_type == ListProcessesResult:
                 test_instance = result_type(processes=[])
-            elif result_type == KillPersistprocResult:
+            elif result_type == ShutdownResult:
                 test_instance = result_type(pid=1234)
             else:
                 test_instance = result_type()

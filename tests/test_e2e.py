@@ -430,10 +430,10 @@ def pid_is_killed(pid):
     return False
 
 
-def test_kill_persistproc_command():
-    """Test that kill-persistproc command gracefully shuts down the server."""
+def test_shutdown_command():
+    """Test that shutdown command gracefully shuts down the server."""
 
-    # don't use the server fixture here because we want to test the kill-persistproc command
+    # don't use the server fixture here because we want to test the shutdown command
     start_persistproc()
 
     # 1. Start a managed process to verify server is working
@@ -465,8 +465,8 @@ def test_kill_persistproc_command():
         f"Server PID {actual_server_pid} not found in lsof output: {lsof_result.stdout}"
     )
 
-    # 4. Run kill-persistproc command
-    kill_result = run_cli("kill-persistproc", "--format", "json")
+    # 4. Run shutdown command
+    kill_result = run_cli("shutdown", "--format", "json")
     # print(f"DEBUG: Kill command exit code: {kill_result.returncode}")
     print(f"DEBUG: Kill command stdout:\n{kill_result.stdout}")
     print(f"DEBUG: Kill command stderr:\n{kill_result.stderr}")
