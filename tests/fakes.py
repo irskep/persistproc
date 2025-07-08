@@ -177,7 +177,7 @@ def create_fake_registry(base_dir: Path) -> Any:
 def create_fake_proc_entry(
     pid: int = 1234,
     command: list[str] | None = None,
-    working_directory: str = "/tmp",
+    working_directory: str | None = None,
     status: str = "running",
     label: str = "test-process",
     proc: Any = None,
@@ -186,6 +186,11 @@ def create_fake_proc_entry(
     """Create a fake process entry for testing."""
     if command is None:
         command = ["echo", "hello"]
+
+    if working_directory is None:
+        import tempfile
+
+        working_directory = tempfile.gettempdir()
 
     if log_prefix is None:
         log_prefix = f"{pid}.echo"
