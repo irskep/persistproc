@@ -100,7 +100,7 @@ The server exposes the following tools:
 | list | List all managed processes and their status. Can optionally filter by pid, command, or working directory and provides log paths. |
 | output | Retrieve captured output from a process. |
 
-This list is intentionally short because LLMs perform worse with too many tools, to the point where some tools (such as Cursor) have a cap on how many tools you can have.
+This list is intentionally short because LLMs perform worse with too many tools, to the point where some IDEs (such as Cursor) have a cap on how many tools you can have.
 
 ## Getting started
 
