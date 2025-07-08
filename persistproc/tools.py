@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import json
 import os
 import shlex
 from argparse import ArgumentParser, Namespace
@@ -441,8 +442,6 @@ class CtrlProcessTool(ITool):
         environment = None
         if getattr(args, "environment", None):
             try:
-                import json
-
                 environment = json.loads(args.environment)
             except json.JSONDecodeError as e:
                 print(f"Error parsing environment JSON: {e}")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 
@@ -11,6 +12,7 @@ from .logging_utils import CLI_LOGGER
 from .process_types import (
     KillPersistprocResult,
     ListProcessesResult,
+    ProcessInfo,
     ProcessOutputResult,
     RestartProcessResult,
     StartProcessResult,
@@ -61,7 +63,6 @@ async def make_mcp_request(
 
 def _create_result_object(tool_name: str, result_data: dict) -> object | None:
     """Create a result object from JSON data based on the tool name."""
-    from .process_types import ProcessInfo
 
     # Map tool names to their result types
     result_type_map = {
@@ -93,7 +94,6 @@ def _create_result_object(tool_name: str, result_data: dict) -> object | None:
                 return ListProcessesResult(processes=processes)
             else:
                 # For other result types, filter out any fields not in the dataclass
-                import inspect
 
                 sig = inspect.signature(result_type)
                 filtered_data = {

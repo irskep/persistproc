@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -188,8 +189,6 @@ def create_fake_proc_entry(
         command = ["echo", "hello"]
 
     if working_directory is None:
-        import tempfile
-
         working_directory = tempfile.gettempdir()
 
     if log_prefix is None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -28,6 +29,7 @@ from persistproc.process_types import (
     StartProcessResult,
     StopProcessResult,
 )
+from .logging_utils import get_current_log_path
 
 __all__ = ["ProcessManager"]
 
@@ -48,7 +50,6 @@ def _get_iso_ts() -> str:  # noqa: D401 – helper
 
 def _escape_cmd(cmd: str, max_len: int = 50) -> str:  # noqa: D401 – helper
     """Return *cmd* sanitised for use in filenames."""
-    import re
 
     cmd = re.sub(r"\s+", "_", cmd)
     cmd = re.sub(r"[^a-zA-Z0-9_-]", "", cmd)
@@ -228,9 +229,6 @@ class ProcessManager:  # noqa: D101
     ) -> ListProcessesResult:  # noqa: D401
         # Special case: pid=0 requests server information only
         if pid == 0:
-            from .process_types import ProcessInfo
-            from .logging_utils import get_current_log_path
-
             # Get the current server log file path
             log_path = get_current_log_path()
             log_path_str = str(log_path) if log_path else None

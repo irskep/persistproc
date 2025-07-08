@@ -1,5 +1,6 @@
 """Unit tests for tools.py using mocks/fakes to avoid real MCP calls."""
 
+import asyncio
 from argparse import Namespace
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,6 +14,7 @@ from persistproc.tools import (
     _parse_target_to_pid_or_command_or_label,
 )
 from persistproc.mcp_client_utils import execute_mcp_request
+from persistproc.process_types import StreamEnum
 
 
 class TestParseTargetToPidOrCommandOrLabel:
@@ -64,7 +66,6 @@ class TestMCPRequest:
         # Setup mock asyncio.run to call the async function
         def run_coro(coro):
             # Simulate the async function execution
-            import asyncio
 
             return asyncio.get_event_loop().run_until_complete(coro)
 
@@ -106,8 +107,6 @@ class TestMCPRequest:
         mock_make_client.return_value.__aenter__.return_value = mock_client
 
         def run_coro(coro):
-            import asyncio
-
             return asyncio.get_event_loop().run_until_complete(coro)
 
         mock_asyncio_run.side_effect = run_coro
@@ -344,8 +343,6 @@ class TestGetProcessOutputTool:
         mock_manager = MagicMock(spec=ProcessManager)
         mock_result = MagicMock()
         mock_manager.get_output.return_value = mock_result
-
-        from persistproc.process_types import StreamEnum
 
         result = GetProcessOutputTool._apply(
             mock_manager,

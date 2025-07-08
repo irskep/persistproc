@@ -1,6 +1,7 @@
 """Unit tests for text formatting functions."""
 
 from persistproc.text_formatters import (
+    FORMATTERS,
     format_start_process_result,
     format_stop_process_result,
     format_list_processes_result,
@@ -202,7 +203,6 @@ class TestFormatResult:
 
     def test_format_all_result_types(self):
         """Test that all result types are properly mapped in FORMATTERS."""
-        from persistproc.text_formatters import FORMATTERS
 
         # Test that all result types have formatters
         result_types = [

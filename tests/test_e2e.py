@@ -1,3 +1,4 @@
+import datetime
 import os
 import time
 from pathlib import Path
@@ -265,7 +266,6 @@ def test_get_process_output_with_time_filters(server):
     time.sleep(1)
 
     # Record a timestamp
-    import datetime
 
     timestamp = datetime.datetime.now().isoformat()
 
@@ -420,7 +420,6 @@ def test_run_detach_keeps_process_running(server):
 
 def test_kill_persistproc_command(server):
     """Test that kill-persistproc command gracefully shuts down the server."""
-    import subprocess
 
     # 1. Start a managed process to verify server is working
     start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
@@ -433,13 +432,22 @@ def test_kill_persistproc_command(server):
     list_info = extract_json(list_result.stdout)
     assert len(list_info["processes"]) == 1
 
-    # 3. Run kill-persistproc command
-    kill_result = run_cli("kill-persistproc", "--format", "json")
-    print(f"DEBUG: kill_result.stdout = {kill_result.stdout!r}")
-    kill_info = extract_json(kill_result.stdout)
-    print(f"DEBUG: kill_info = {kill_info!r}")
+    # 3. Get the actual server PID first to compare
+    list_server_result = run_cli("list", "--pid", "0")
+    list_server_info = extract_json(list_server_result.stdout)
+    actual_server_pid = list_server_info["processes"][0]["pid"]
+    print(f"DEBUG: Actual server PID from list: {actual_server_pid}")
 
-    # 4. Verify it returns the server PID
+    # 4. Run kill-persistproc command
+    kill_result = run_cli("kill-persistproc", "--format", "json")
+    print(f"DEBUG: Kill command exit code: {kill_result.returncode}")
+    print(f"DEBUG: Kill command stdout: {kill_result.stdout!r}")
+    print(f"DEBUG: Kill command stderr: {kill_result.stderr!r}")
+    kill_info = extract_json(kill_result.stdout)
+    print(f"DEBUG: Kill command returned PID: {kill_info['pid']}")
+    print(f"DEBUG: PIDs match: {actual_server_pid == kill_info['pid']}")
+
+    # 5. Verify it returns the server PID
     # Schema assertion: should be {"pid": int} format
     assert isinstance(kill_info, dict), f"Expected dict, got {type(kill_info)}"
     assert "pid" in kill_info, f"Expected 'pid' key in {kill_info.keys()}"
@@ -450,18 +458,34 @@ def test_kill_persistproc_command(server):
     assert isinstance(server_pid, int)
     assert server_pid > 0
 
-    # 5. Wait for the server to shut down gracefully (poll every 100ms up to 30 seconds)
+    # 6. Wait for the server to shut down gracefully by checking if the process exists
     max_wait_time = 10.0
-    poll_interval = 2.0
+    poll_interval = 0.1
     start_time = time.time()
 
     while time.time() - start_time < max_wait_time:
+        # Check if the server is still responding to MCP requests (more reliable than os.kill)
         try:
-            # This should fail once the server shuts down
-            run_cli("list")
-            time.sleep(poll_interval)
-        except subprocess.CalledProcessError:
-            # Expected - server has shut down
+            test_result = run_cli("list")
+            if test_result.returncode == 0:
+                elapsed = time.time() - start_time
+                print(
+                    f"DEBUG: Server still responding to MCP requests after {elapsed:.1f}s"
+                )
+                time.sleep(poll_interval)
+            else:
+                # Server is not responding, which means it shut down
+                elapsed = time.time() - start_time
+                print(
+                    f"DEBUG: Server stopped responding to MCP requests after {elapsed:.1f}s"
+                )
+                break
+        except Exception as e:
+            # Server is not responding, which means it shut down
+            elapsed = time.time() - start_time
+            print(
+                f"DEBUG: Server stopped responding to MCP requests after {elapsed:.1f}s (exception: {e})"
+            )
             break
     else:
         raise AssertionError(f"Server did not shut down within {max_wait_time} seconds")
