@@ -435,17 +435,24 @@ def test_kill_persistproc_command(server):
 
     # 3. Run kill-persistproc command
     kill_result = run_cli("kill-persistproc", "--format", "json")
+    print(f"DEBUG: kill_result.stdout = {kill_result.stdout!r}")
     kill_info = extract_json(kill_result.stdout)
+    print(f"DEBUG: kill_info = {kill_info!r}")
 
     # 4. Verify it returns the server PID
-    assert "pid" in kill_info["processes"][0]
-    server_pid = kill_info["processes"][0]["pid"]
+    # Schema assertion: should be {"pid": int} format
+    assert isinstance(kill_info, dict), f"Expected dict, got {type(kill_info)}"
+    assert "pid" in kill_info, f"Expected 'pid' key in {kill_info.keys()}"
+    assert "processes" not in kill_info, (
+        f"Should not have 'processes' key in kill response: {kill_info.keys()}"
+    )
+    server_pid = kill_info["pid"]
     assert isinstance(server_pid, int)
     assert server_pid > 0
 
     # 5. Wait for the server to shut down gracefully (poll every 100ms up to 30 seconds)
-    max_wait_time = 30.0
-    poll_interval = 0.1
+    max_wait_time = 10.0
+    poll_interval = 2.0
     start_time = time.time()
 
     while time.time() - start_time < max_wait_time:

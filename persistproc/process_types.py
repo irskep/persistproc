@@ -99,7 +99,7 @@ class ProcessControlResult:
 
 @dataclass
 class KillPersistprocResult:
-    pid: int
+    pid: int | None = None
     error: str | None = None
 
 

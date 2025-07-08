@@ -1,11 +1,12 @@
 """Kill persistproc server functionality."""
 
+import asyncio
 import json
 import os
 import signal
 
+from .client import make_client
 from .logging_utils import CLI_LOGGER
-from .mcp_client_utils import execute_mcp_request
 from .process_types import KillPersistprocResult
 from .text_formatters import format_result
 
@@ -17,7 +18,18 @@ def kill_persistproc_server(port: int, format_output: str = "text") -> None:
     try:
         # First verify server is running by connecting to it
         try:
-            execute_mcp_request("list", port, {}, "json")
+
+            async def verify_server():
+                async with make_client(port) as client:
+                    results = await client.call_tool("list", {})
+                    return results is not None
+
+            if not asyncio.run(verify_server()):
+                error_result = KillPersistprocResult(
+                    error="Cannot connect to persistproc server - it may not be running"
+                )
+                _output_result(error_result, format_output)
+                return
         except Exception:
             error_result = KillPersistprocResult(
                 error="Cannot connect to persistproc server - it may not be running"
@@ -28,12 +40,21 @@ def kill_persistproc_server(port: int, format_output: str = "text") -> None:
         # Find the server process by using the 'list' tool with pid=0
         # This returns the server info in an OS-independent way
         try:
-            list_response = execute_mcp_request("list", port, {"pid": 0}, "json")
-            list_data = (
-                json.loads(list_response)
-                if isinstance(list_response, str)
-                else list_response
-            )
+
+            async def get_server_info():
+                async with make_client(port) as client:
+                    results = await client.call_tool("list", {"pid": 0})
+                    if not results:
+                        return None
+                    return json.loads(results[0].text)
+
+            list_data = asyncio.run(get_server_info())
+            if list_data is None:
+                error_result = KillPersistprocResult(
+                    error="No response from server for list tool"
+                )
+                _output_result(error_result, format_output)
+                return
 
             if "processes" not in list_data or not list_data["processes"]:
                 error_result = KillPersistprocResult(
