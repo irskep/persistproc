@@ -1,8 +1,17 @@
 # Claude Development Notes
 
+## Structure
+
+Typically begin by reading README.md.
+
+Key files:
+- persistproc/cli.py
+- persistproc/tools.py
+- persistproc/process_manager.py
+
 ## Running Tests
 
-Use `uv run python -m pytest` to run tests.
+Use `uv run python -m pytest` to run tests. For development, use `uv run python -m pytest -x --maxfail=3` to stop after 3 failures.
 
 ## Linting and Type Checking
 
@@ -19,3 +28,24 @@ Instead:
 - Debug issues through test output and logging
 
 **NEVER background a process with an `&` suffix.**
+
+## Workflow guidelines
+
+For EVERY programming task assigned, you are NOT FINISHED until you can produce a message in the following format:
+
+<ReportFormat>
+After-action report for (task title here)
+
+Relevant files found:
+- (list them)
+
+(1-3 paragraphs justifying why the change is both correct and comprehensive)
+
+Steps taken to verify:
+- (list them)
+
+Web links supporting my changes:
+- (list them)
+
+I solemnly swear there are no further steps I can take to verify the changes within the boundaries set for me.
+</ReportFormat>
