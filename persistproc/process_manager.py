@@ -29,7 +29,6 @@ from persistproc.process_types import (
     StartProcessResult,
     StopProcessResult,
 )
-from .logging_utils import get_current_log_path
 
 __all__ = ["ProcessManager"]
 
@@ -81,10 +80,10 @@ class Registry:
 class ProcessManager:  # noqa: D101
     def __init__(
         self,
+        server_log_path: Path,
         monitor=True,
         registry: Registry | None = None,
         data_dir: Path | None = None,
-        server_log_path: Path | None = None,
     ) -> None:  # noqa: D401 – simple init
         self.data_dir = data_dir
         self._server_log_path = server_log_path
@@ -230,8 +229,7 @@ class ProcessManager:  # noqa: D101
         # Special case: pid=0 requests server information only
         if pid == 0:
             # Get the current server log file path
-            log_path = get_current_log_path()
-            log_path_str = str(log_path) if log_path else None
+            log_path_str = str(self._server_log_path)
 
             server_info = ProcessInfo(
                 pid=os.getpid(),

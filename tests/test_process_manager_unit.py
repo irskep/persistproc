@@ -30,10 +30,10 @@ def process_manager(fake_registry, temp_dir):
     """Create a ProcessManager with fake dependencies and no monitoring."""
     # Disable monitoring to avoid real threading
     return ProcessManager(
+        temp_dir / "server.log",
         monitor=False,
         registry=fake_registry,
         data_dir=temp_dir,
-        server_log_path=temp_dir / "server.log",
     )
 
 
@@ -61,7 +61,12 @@ class TestProcessManagerInit:
 
     def test_init_with_monitoring_disabled(self, fake_registry, temp_dir):
         """Test initialization with monitoring disabled."""
-        pm = ProcessManager(monitor=False, registry=fake_registry, data_dir=temp_dir)
+        pm = ProcessManager(
+            temp_dir / "server.log",
+            monitor=False,
+            registry=fake_registry,
+            data_dir=temp_dir,
+        )
         assert pm.data_dir == temp_dir
         assert pm.monitor is False
         assert pm._monitor_thread is None
@@ -72,7 +77,12 @@ class TestProcessManagerInit:
             mock_thread_instance = Mock()
             mock_thread.return_value = mock_thread_instance
 
-            ProcessManager(monitor=True, registry=fake_registry, data_dir=temp_dir)
+            ProcessManager(
+                temp_dir / "server.log",
+                monitor=True,
+                registry=fake_registry,
+                data_dir=temp_dir,
+            )
 
             # Should create and start thread
             mock_thread.assert_called_once()
@@ -473,7 +483,12 @@ class TestProcessManagerShutdown:
             mock_thread = Mock()
             mock_thread_cls.return_value = mock_thread
 
-            pm = ProcessManager(monitor=True, registry=fake_registry, data_dir=temp_dir)
+            pm = ProcessManager(
+                temp_dir / "server.log",
+                monitor=True,
+                registry=fake_registry,
+                data_dir=temp_dir,
+            )
 
             pm.shutdown_monitor()
 

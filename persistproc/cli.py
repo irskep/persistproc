@@ -444,7 +444,7 @@ def handle_cli_action(action: CLIAction, metadata: CLIMetadata) -> None:
     CLI_LOGGER.info("Verbose log for this run: %s", shlex.quote(str(metadata.log_path)))
 
     if isinstance(action, ServeAction):
-        serve(action.port, action.data_dir)
+        serve(action.port, action.data_dir, metadata.log_path)
     elif isinstance(action, RunAction):
         CLI_LOGGER.info(
             "Running command: %s %s", action.command, " ".join(action.run_args)

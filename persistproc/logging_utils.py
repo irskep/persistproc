@@ -10,41 +10,6 @@ CLI_LOGGER_NAME = "persistproc.cli"
 
 
 _is_quiet = False
-_current_log_path: Path | None = None
-
-
-def get_log_path(data_dir: Path, timestamp: str | None = None) -> Path:
-    """Construct the log file path for a given data directory and optional timestamp.
-
-    If timestamp is None, uses the current timestamp.
-    """
-    if timestamp is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return data_dir / f"persistproc.run.{timestamp}.log"
-
-
-def find_latest_log_path(data_dir: Path) -> Path | None:
-    """Find the most recent log file in the data directory."""
-    if not data_dir.exists():
-        return None
-
-    log_files = list(data_dir.glob("persistproc.run.*.log"))
-    if not log_files:
-        return None
-
-    # Return the most recently modified log file
-    return max(log_files, key=lambda p: p.stat().st_mtime)
-
-
-def get_current_log_path() -> Path | None:
-    """Get the current log path that was set during setup_logging."""
-    return _current_log_path
-
-
-def _set_current_log_path(path: Path) -> None:
-    """Internal function to set the current log path."""
-    global _current_log_path
-    _current_log_path = path
 
 
 def get_is_quiet() -> bool:
@@ -90,8 +55,8 @@ def setup_logging(verbosity: int, data_dir: Path) -> Path:
     # Ensure the directory exists so we can write the log file.
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    log_path = get_log_path(data_dir)
-    _set_current_log_path(log_path)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = data_dir / f"persistproc.run.{timestamp}.log"
 
     # We configure the root logger, so all libraries using the standard
     # `logging` module will inherit this configuration.
