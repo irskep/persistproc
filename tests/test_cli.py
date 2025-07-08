@@ -542,6 +542,32 @@ def test_parse_cli_restart_by_label(mock_setup_logging):
     assert action.args.args == []
 
 
+def test_parse_cli_list_with_filters(mock_setup_logging):
+    """Test `persistproc list --pid 123 --command-or-label python`."""
+    action, metadata = parse_cli(
+        ["list", "--pid", "123", "--command-or-label", "python"]
+    )
+    assert isinstance(action, ToolAction)
+    assert action.tool.name == "list"
+    assert action.args.pid == 123
+    assert action.args.command_or_label == "python"
+
+
+def test_parse_cli_list_no_filters(mock_setup_logging):
+    """Test `persistproc list` with no filters."""
+    try:
+        action, metadata = parse_cli(["list"])
+        assert isinstance(action, ToolAction)
+        assert action.tool.name == "list"
+        assert getattr(action.args, "pid", None) is None
+        assert getattr(action.args, "command_or_label", None) is None
+        assert getattr(action.args, "working_directory", None) is None
+    except SystemExit as e:
+        pytest.fail(f"parse_cli(['list']) failed with SystemExit code {e.code}")
+    except Exception as e:
+        pytest.fail(f"parse_cli(['list']) failed with exception: {e}")
+
+
 # Additional edge case tests
 def test_parse_cli_run_empty_args_after_separator(mock_setup_logging):
     """Test `persistproc run python --` with no args after separator."""

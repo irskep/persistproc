@@ -22,9 +22,7 @@ from persistproc.process_types import (
     KillPersistprocResult,
     ListProcessesResult,
     ProcessInfo,
-    ProcessLogPathsResult,
     ProcessOutputResult,
-    ProcessStatusResult,
     RestartProcessResult,
     StartProcessResult,
     StopProcessResult,
@@ -221,39 +219,18 @@ class ProcessManager:  # noqa: D101
     # Query helpers
     # ------------------------------------------------------------------
 
-    def list(self) -> ListProcessesResult:  # noqa: D401
-        process_snapshot = self._storage.get_processes_values_snapshot()
-        res = [self._to_public_info(ent) for ent in process_snapshot]
-        return ListProcessesResult(processes=res)
-
-    def get_status(
+    def list(
         self,
         pid: int | None = None,
         command_or_label: str | None = None,
-        working_directory: Path | None = None,
-    ) -> ProcessStatusResult:  # noqa: D401
+        working_directory: str | None = None,
+    ) -> ListProcessesResult:  # noqa: D401
         process_snapshot = self._storage.get_processes_values_snapshot()
-        target_pid, error = self._lookup_process_in_snapshot(
-            process_snapshot, pid, None, command_or_label, working_directory
+        filtered_snapshot = self._filter_processes(
+            process_snapshot, pid, command_or_label, working_directory
         )
-
-        if error:
-            return ProcessStatusResult(error=error)
-
-        if target_pid is None:
-            return ProcessStatusResult(error="Process not found")
-
-        ent = self._storage.get_process_snapshot(target_pid)
-        if ent is None:
-            return ProcessStatusResult(error=f"PID {target_pid} not found")
-
-        return ProcessStatusResult(
-            pid=ent.pid,
-            command=ent.command,
-            working_directory=ent.working_directory,
-            status=ent.status,
-            label=ent.label,
-        )
+        res = [self._to_public_info(ent) for ent in filtered_snapshot]
+        return ListProcessesResult(processes=res)
 
     # ------------------------------------------------------------------
     # Control helpers
@@ -554,38 +531,6 @@ class ProcessManager:  # noqa: D101
         else:
             return ProcessOutputResult(output=[], lines_before=0, lines_after=0)
 
-    def get_log_paths(
-        self,
-        pid: int | None = None,
-        command_or_label: str | None = None,
-        working_directory: Path | None = None,
-    ) -> ProcessLogPathsResult:  # noqa: D401
-        logger.debug("get_log_paths: finding process")
-        process_snapshot = self._storage.get_processes_values_snapshot()
-        target_pid, error = self._lookup_process_in_snapshot(
-            process_snapshot, pid, None, command_or_label, working_directory
-        )
-        logger.debug("get_log_paths: finished finding process")
-
-        if error:
-            return ProcessLogPathsResult(error=error)
-
-        if target_pid is None:
-            return ProcessLogPathsResult(error="Process not found")
-
-        logger.debug("get_log_paths: getting process info for pid=%d", target_pid)
-        ent = self._storage.get_process_snapshot(target_pid)
-        if ent is None:
-            logger.debug("get_log_paths: process not found for pid=%d", target_pid)
-            return ProcessLogPathsResult(error=f"PID {target_pid} not found")
-        logger.debug("get_log_paths: got process info for pid=%d", target_pid)
-
-        if self._log_mgr is None:
-            raise RuntimeError("Log manager not available")
-
-        paths = self._log_mgr.paths_for(ent.log_prefix)
-        return ProcessLogPathsResult(stdout=str(paths.stdout), stderr=str(paths.stderr))
-
     def kill_persistproc(self) -> KillPersistprocResult:  # noqa: D401
         """Kill all managed processes and then kill the server process."""
         server_pid = os.getpid()
@@ -707,7 +652,60 @@ class ProcessManager:  # noqa: D101
         else:
             return None, f"No process found for '{command_or_label}'"
 
+    def _filter_processes(
+        self,
+        process_snapshot: list[_ProcEntry],
+        pid: int | None = None,
+        command_or_label: str | None = None,
+        working_directory: str | None = None,
+    ) -> list[_ProcEntry]:
+        """Filter process entries based on the provided criteria."""
+        # If no filters provided, return all
+        if pid is None and command_or_label is None and working_directory is None:
+            return process_snapshot
+
+        filtered_snapshot = []
+        for ent in process_snapshot:
+            # Check PID filter
+            if pid is not None and ent.pid != pid:
+                continue
+
+            # Check command_or_label filter (check both label and command)
+            if command_or_label is not None:
+                # First try matching by label
+                if ent.label == command_or_label:
+                    pass  # matches
+                else:
+                    # Try matching by command
+                    try:
+                        if ent.command != shlex.split(command_or_label):
+                            continue
+                    except ValueError:
+                        continue  # Skip if command parsing fails
+
+            # Check working directory filter
+            if (
+                working_directory is not None
+                and ent.working_directory != working_directory
+            ):
+                continue
+
+            filtered_snapshot.append(ent)
+
+        return filtered_snapshot
+
     def _to_public_info(self, ent: _ProcEntry) -> ProcessInfo:  # noqa: D401 – helper
+        # Get log paths if log manager is available and we have a log prefix
+        log_stdout = None
+        log_stderr = None
+        log_combined = None
+
+        if self._log_mgr is not None and ent.log_prefix:
+            paths = self._log_mgr.paths_for(ent.log_prefix)
+            log_stdout = str(paths.stdout)
+            log_stderr = str(paths.stderr)
+            log_combined = str(paths.combined)
+
         return ProcessInfo(
             pid=ent.pid,
             command=ent.command,
@@ -716,6 +714,9 @@ class ProcessManager:  # noqa: D101
             label=ent.label,
             start_time=ent.start_time,
             end_time=ent.exit_time,
+            log_stdout=log_stdout,
+            log_stderr=log_stderr,
+            log_combined=log_combined,
         )
 
     def _monitor_loop(self) -> None:  # noqa: D401 – thread target

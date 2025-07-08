@@ -213,12 +213,14 @@ Add a custom label for complex commands:
 
 ## `list`
 
-List all managed processes and their status.
+List all managed processes and their status, optionally filtered by pid, command, or working directory. Provides log paths for each process.
 
 <!-- persistproc list --help -->
 ```
 usage: persistproc list [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
-                        [--format {text,json}]
+                        [--format {text,json}] [--pid PID]
+                        [--command-or-label COMMAND_OR_LABEL]
+                        [--working-directory WORKING_DIRECTORY]
 
 options:
   -h, --help            show this help message and exit
@@ -231,19 +233,48 @@ options:
                         warnings and errors.
   --format {text,json}  Output format (default: text; env:
                         $PERSISTPROC_FORMAT)
+  --pid PID             Filter by process ID
+  --command-or-label COMMAND_OR_LABEL
+                        Filter by command or label
+  --working-directory WORKING_DIRECTORY
+                        Filter by working directory
 ```
 
 **Examples**
+
+List all processes:
 
 ```bash
 > persistproc list
 PID 12345: npm run dev in /Users/user/myproject (running)
 Command: npm run dev
 Working directory: /Users/user/myproject
+Stdout log: /Users/user/Library/Application Support/persistproc/logs/12345_stdout.log
+Stderr log: /Users/user/Library/Application Support/persistproc/logs/12345_stderr.log
+Combined log: /Users/user/Library/Application Support/persistproc/logs/12345_combined.log
 
 PID 67890: python -m http.server 8080 in /Users/user/docs (running)
 Command: python -m http.server 8080
 Working directory: /Users/user/docs
+```
+
+Filter by specific process ID:
+
+```bash
+> persistproc list --pid 12345
+```
+
+Filter by command or label:
+
+```bash
+> persistproc list --command "npm run dev"
+> persistproc list --command "my-dev-server"
+```
+
+Filter by working directory:
+
+```bash
+> persistproc list --working-directory /Users/user/myproject
 ```
 
 Get more detailed output or different formats:
@@ -251,64 +282,6 @@ Get more detailed output or different formats:
 ```bash
 > persistproc list -v
 > persistproc list --format json
-```
-
-## `status`
-
-Get the detailed status of a specific process.
-
-<!-- persistproc status --help -->
-```
-usage: persistproc status [-h] [--port PORT] [--data-dir DATA_DIR] [-v] [-q]
-                          [--format {text,json}]
-                          [--working-directory WORKING_DIRECTORY]
-                          TARGET [args ...]
-
-positional arguments:
-  TARGET                The PID, label, or command to get status for.
-  args                  Arguments to the command
-
-options:
-  -h, --help            show this help message and exit
-  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
-  --data-dir DATA_DIR   Data directory (default:
-                        ~/Library/Application Support/persistproc;
-                        env: $PERSISTPROC_DATA_DIR)
-  -v, --verbose         Increase verbosity; you can use -vv for more
-  -q, --quiet           Decrease verbosity. Passing -q once will show only
-                        warnings and errors.
-  --format {text,json}  Output format (default: text; env:
-                        $PERSISTPROC_FORMAT)
-  --working-directory WORKING_DIRECTORY
-                        The working directory for the process.
-```
-
-**Examples**
-
-Get status by PID, command, or label:
-
-```bash
-> persistproc status 12345
-PID: 12345
-Command: npm run dev
-Working directory: /Users/user/myproject
-Status: running
-Label: npm run dev in /Users/user/myproject
-
-> persistproc status npm run dev
-> persistproc status "my-dev-server"
-```
-
-Add working directory context when matching by command:
-
-```bash
-> persistproc status --working-directory /path/to/project npm run dev
-```
-
-Get structured output:
-
-```bash
-> persistproc status --format json 12345
 ```
 
 ## `stop`
@@ -505,55 +478,6 @@ Specify working directory context when matching by command:
 
 ```bash
 > persistproc output --working-directory /path/to/project npm run dev
-```
-
-## `get_log_paths`
-
-Get the paths to the log files for a specific process.
-
-<!-- persistproc get_log_paths --help -->
-```
-usage: persistproc get_log_paths [-h] [--port PORT] [--data-dir DATA_DIR] [-v]
-                                 [-q] [--format {text,json}]
-                                 [--working-directory WORKING_DIRECTORY]
-                                 TARGET [args ...]
-
-positional arguments:
-  TARGET                The PID, label, or command to get log paths for.
-  args                  Arguments to the command
-
-options:
-  -h, --help            show this help message and exit
-  --port PORT           Server port (default: 8947; env: $PERSISTPROC_PORT)
-  --data-dir DATA_DIR   Data directory (default:
-                        ~/Library/Application Support/persistproc;
-                        env: $PERSISTPROC_DATA_DIR)
-  -v, --verbose         Increase verbosity; you can use -vv for more
-  -q, --quiet           Decrease verbosity. Passing -q once will show only
-                        warnings and errors.
-  --format {text,json}  Output format (default: text; env:
-                        $PERSISTPROC_FORMAT)
-  --working-directory WORKING_DIRECTORY
-                        The working directory for the process.
-```
-
-**Examples**
-
-Get log file paths by PID, command, or label:
-
-```bash
-> persistproc get_log_paths 12345
-Stdout log: /Users/user/Library/Application Support/persistproc/logs/12345_stdout.log
-Stderr log: /Users/user/Library/Application Support/persistproc/logs/12345_stderr.log
-
-> persistproc get_log_paths npm run dev
-> persistproc get_log_paths "my-dev-server"
-```
-
-Add working directory context when matching by command:
-
-```bash
-> persistproc get_log_paths --working-directory /path/to/project npm run dev
 ```
 
 ## `kill_persistproc`

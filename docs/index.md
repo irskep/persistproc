@@ -96,12 +96,10 @@ The server exposes the following tools:
 | Tool | Description |
 | --- | --- |
 | start | Start a new long-running process. |
-| list | List all managed processes and their status. |
-| status | Get the detailed status of a specific process. |
+| list | List all managed processes and their status. Can optionally filter by pid, command, or working directory and provides log paths. |
 | stop | Stop a running process. |
 | restart | Stops a process and starts it again with the same parameters. |
 | output | Retrieve captured output from a process. |
-| get_log_paths | Get the paths to the log files for a specific process. |
 | kill_persistproc | Kill all managed processes and get the PID of the persistproc server. |
 
 ## Getting started

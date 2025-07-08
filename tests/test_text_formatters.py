@@ -3,10 +3,8 @@
 from persistproc.text_formatters import (
     format_start_process_result,
     format_stop_process_result,
-    format_process_status_result,
     format_list_processes_result,
     format_process_output_result,
-    format_process_log_paths_result,
     format_restart_process_result,
     format_kill_persistproc_result,
     format_result,
@@ -14,11 +12,9 @@ from persistproc.text_formatters import (
 from persistproc.process_types import (
     StartProcessResult,
     StopProcessResult,
-    ProcessStatusResult,
     ListProcessesResult,
     ProcessInfo,
     ProcessOutputResult,
-    ProcessLogPathsResult,
     RestartProcessResult,
     KillPersistprocResult,
 )
@@ -71,33 +67,6 @@ class TestStopProcessResultFormatter:
         result = StopProcessResult(exit_code=None)
         formatted = format_stop_process_result(result)
         assert formatted == "Process could not be terminated"
-
-
-class TestProcessStatusResultFormatter:
-    def test_format_full_status(self):
-        result = ProcessStatusResult(
-            pid=1234,
-            command=["python", "script.py"],
-            working_directory="/tmp",
-            status="running",
-            label="test process",
-        )
-        formatted = format_process_status_result(result)
-        assert "PID: 1234" in formatted
-        assert "Command: python script.py" in formatted
-        assert "Working directory: /tmp" in formatted
-        assert "Status: running" in formatted
-        assert "Label: test process" in formatted
-
-    def test_format_error_status(self):
-        result = ProcessStatusResult(error="Process not found")
-        formatted = format_process_status_result(result)
-        assert formatted == "Error: Process not found"
-
-    def test_format_empty_status(self):
-        result = ProcessStatusResult()
-        formatted = format_process_status_result(result)
-        assert formatted == "No process information available"
 
 
 class TestListProcessesResultFormatter:
@@ -191,33 +160,6 @@ class TestProcessOutputResultFormatter:
         assert formatted == "No output available"
 
 
-class TestProcessLogPathsResultFormatter:
-    def test_format_both_paths(self):
-        result = ProcessLogPathsResult(
-            stdout="/tmp/stdout.log",
-            stderr="/tmp/stderr.log",
-        )
-        formatted = format_process_log_paths_result(result)
-        assert "Stdout log: /tmp/stdout.log" in formatted
-        assert "Stderr log: /tmp/stderr.log" in formatted
-
-    def test_format_stdout_only(self):
-        result = ProcessLogPathsResult(stdout="/tmp/stdout.log")
-        formatted = format_process_log_paths_result(result)
-        assert "Stdout log: /tmp/stdout.log" in formatted
-        assert "Stderr log:" not in formatted
-
-    def test_format_error_log_paths(self):
-        result = ProcessLogPathsResult(error="Process not found")
-        formatted = format_process_log_paths_result(result)
-        assert formatted == "Error: Process not found"
-
-    def test_format_no_paths(self):
-        result = ProcessLogPathsResult()
-        formatted = format_process_log_paths_result(result)
-        assert formatted == "No log paths available"
-
-
 class TestRestartProcessResultFormatter:
     def test_format_successful_restart(self):
         result = RestartProcessResult(pid=1234)
@@ -266,10 +208,8 @@ class TestFormatResult:
         result_types = [
             StartProcessResult,
             StopProcessResult,
-            ProcessStatusResult,
             ListProcessesResult,
             ProcessOutputResult,
-            ProcessLogPathsResult,
             RestartProcessResult,
             KillPersistprocResult,
         ]

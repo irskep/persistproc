@@ -208,12 +208,13 @@ async def _start_or_get_process_via_mcp(
                     pid = existing["pid"]
 
                 # 2. Fetch log paths to locate the combined file.
-                logs_res = await client.call_tool("get_log_paths", {"pid": pid})
+                logs_res = await client.call_tool("list", {"pid": pid})
                 logs_info = json.loads(logs_res[0].text)
-                if logs_info.get("error"):
-                    raise RuntimeError(logs_info["error"])
+                processes = logs_info.get("processes", [])
+                if not processes:
+                    raise RuntimeError(f"Process {pid} not found")
 
-                stdout_path = logs_info["stdout"]
+                stdout_path = processes[0]["log_stdout"]
                 combined_path = _resolve_combined_path(stdout_path)
 
                 return pid, combined_path
@@ -248,9 +249,12 @@ async def _async_get_process_status(port: str, pid: int) -> str | None:  # noqa:
     """Return status string for *pid* or *None* if request fails."""
 
     async with make_client(port) as client:
-        res = await client.call_tool("status", {"pid": pid})
+        res = await client.call_tool("list", {"pid": pid})
         info = json.loads(res[0].text)
-        return info.get("status")
+        processes = info.get("processes", [])
+        if processes and len(processes) > 0:
+            return processes[0].get("status")
+        return None
 
 
 async def _get_process_status(port: str, pid: int) -> str | None:  # noqa: D401
@@ -281,9 +285,12 @@ async def _async_find_restarted_process(
             ):
                 new_pid = proc["pid"]
 
-                logs_res = await client.call_tool("get_log_paths", {"pid": new_pid})
+                logs_res = await client.call_tool("list", {"pid": new_pid})
                 logs_info = json.loads(logs_res[0].text)
-                combined = _resolve_combined_path(logs_info["stdout"])
+                processes = logs_info.get("processes", [])
+                if not processes:
+                    continue  # Process not found, keep looking
+                combined = _resolve_combined_path(processes[0]["log_stdout"])
                 return new_pid, combined
     return None, None
 

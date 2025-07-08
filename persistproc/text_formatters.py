@@ -3,9 +3,7 @@ from __future__ import annotations
 from .process_types import (
     KillPersistprocResult,
     ListProcessesResult,
-    ProcessLogPathsResult,
     ProcessOutputResult,
-    ProcessStatusResult,
     RestartProcessResult,
     StartProcessResult,
     StopProcessResult,
@@ -41,26 +39,6 @@ def format_stop_process_result(result: StopProcessResult) -> str:
         return f"Process stopped with exit code: {result.exit_code}"
     else:
         return "Process could not be terminated"
-
-
-def format_process_status_result(result: ProcessStatusResult) -> str:
-    """Format a ProcessStatusResult for human-readable output."""
-    if result.error:
-        return f"Error: {result.error}"
-
-    lines = []
-    if result.pid is not None:
-        lines.append(f"PID: {result.pid}")
-    if result.command:
-        lines.append(f"Command: {' '.join(result.command)}")
-    if result.working_directory:
-        lines.append(f"Working directory: {result.working_directory}")
-    if result.status:
-        lines.append(f"Status: {result.status}")
-    if result.label:
-        lines.append(f"Label: {result.label}")
-
-    return "\n".join(lines) if lines else "No process information available"
 
 
 def format_list_processes_result(result: ListProcessesResult) -> str:
@@ -104,20 +82,6 @@ def format_process_output_result(result: ProcessOutputResult) -> str:
     return "\n".join(lines)
 
 
-def format_process_log_paths_result(result: ProcessLogPathsResult) -> str:
-    """Format a ProcessLogPathsResult for human-readable output."""
-    if result.error:
-        return f"Error: {result.error}"
-
-    lines = []
-    if result.stdout:
-        lines.append(f"Stdout log: {result.stdout}")
-    if result.stderr:
-        lines.append(f"Stderr log: {result.stderr}")
-
-    return "\n".join(lines) if lines else "No log paths available"
-
-
 def format_restart_process_result(result: RestartProcessResult) -> str:
     """Format a RestartProcessResult for human-readable output."""
     if result.error:
@@ -141,10 +105,8 @@ def format_kill_persistproc_result(result: KillPersistprocResult) -> str:
 FORMATTERS = {
     StartProcessResult: format_start_process_result,
     StopProcessResult: format_stop_process_result,
-    ProcessStatusResult: format_process_status_result,
     ListProcessesResult: format_list_processes_result,
     ProcessOutputResult: format_process_output_result,
-    ProcessLogPathsResult: format_process_log_paths_result,
     RestartProcessResult: format_restart_process_result,
     KillPersistprocResult: format_kill_persistproc_result,
 }

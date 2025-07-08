@@ -11,9 +11,7 @@ from .logging_utils import CLI_LOGGER
 from .process_types import (
     KillPersistprocResult,
     ListProcessesResult,
-    ProcessLogPathsResult,
     ProcessOutputResult,
-    ProcessStatusResult,
     RestartProcessResult,
     StartProcessResult,
     StopProcessResult,
@@ -69,10 +67,8 @@ def _create_result_object(tool_name: str, result_data: dict) -> object | None:
     result_type_map = {
         "start": StartProcessResult,
         "stop": StopProcessResult,
-        "status": ProcessStatusResult,
         "list": ListProcessesResult,
         "output": ProcessOutputResult,
-        "get_log_paths": ProcessLogPathsResult,
         "restart": RestartProcessResult,
         "kill_persistproc": KillPersistprocResult,
     }

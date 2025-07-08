@@ -9,9 +9,7 @@ __all__ = [
     "ProcessInfo",
     "KillPersistprocResult",
     "ListProcessesResult",
-    "ProcessStatusResult",
     "ProcessOutputResult",
-    "ProcessLogPathsResult",
     "RestartProcessResult",
     "StreamEnum",
 ]
@@ -55,6 +53,9 @@ class ProcessInfo:
     label: str
     start_time: str | None = None
     end_time: str | None = None
+    log_stdout: str | None = None
+    log_stderr: str | None = None
+    log_combined: str | None = None
 
 
 @dataclass
@@ -63,27 +64,10 @@ class ListProcessesResult:
 
 
 @dataclass
-class ProcessStatusResult:
-    pid: int | None = None
-    command: list[str] | None = None
-    working_directory: str | None = None
-    status: str | None = None
-    label: str | None = None
-    error: str | None = None
-
-
-@dataclass
 class ProcessOutputResult:
     output: list[str] | None = None
     lines_before: int | None = None
     lines_after: int | None = None
-    error: str | None = None
-
-
-@dataclass
-class ProcessLogPathsResult:
-    stdout: str | None = None
-    stderr: str | None = None
     error: str | None = None
 
 

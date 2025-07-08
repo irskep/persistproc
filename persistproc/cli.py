@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import shlex
 import sys
@@ -384,6 +385,11 @@ def cli() -> None:
     """Main CLI entry point."""
     try:
         action, metadata = parse_cli(sys.argv[1:])
+
+        logger = logging.getLogger(__name__)
+        logger.debug("action: %s", repr(action))
+        logger.debug("metadata: %s", repr(metadata))
+
         handle_cli_action(action, metadata)
     except SystemExit as e:
         if e.code != 0:
