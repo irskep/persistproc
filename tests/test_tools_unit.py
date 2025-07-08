@@ -9,7 +9,6 @@ from persistproc.tools import (
     ALL_TOOL_CLASSES,
     CtrlProcessTool,
     GetProcessOutputTool,
-    KillPersistprocTool,
     ListProcessesTool,
     _parse_target_to_pid_or_command_or_label,
 )
@@ -371,34 +370,18 @@ class TestGetProcessOutputTool:
         )
 
 
-class TestKillPersistprocTool:
-    """Test the KillPersistprocTool class."""
-
-    def test_apply_method(self):
-        """Test the _apply static method."""
-        mock_manager = MagicMock(spec=ProcessManager)
-        mock_result = {"pid": 12345}
-        mock_manager.kill_persistproc.return_value = mock_result
-
-        result = KillPersistprocTool._apply(mock_manager)
-
-        assert result == mock_result
-        mock_manager.kill_persistproc.assert_called_once()
-
-
 class TestToolCollection:
     """Test the overall tool collection."""
 
     def test_all_tool_classes_count(self):
         """Test that all expected tools are in the collection."""
-        assert len(ALL_TOOL_CLASSES) == 4
+        assert len(ALL_TOOL_CLASSES) == 3
 
         tool_names = [tool_cls().name for tool_cls in ALL_TOOL_CLASSES]
         expected_names = {
             "ctrl",
             "list",
             "output",
-            "kill_persistproc",
         }
         assert set(tool_names) == expected_names
 

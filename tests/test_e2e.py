@@ -417,5 +417,44 @@ def test_run_detach_keeps_process_running(server):
     )
     assert proc_after["status"] == "running"
 
-    # 5. Cleanup.
-    run_cli("stop", str(pid))
+
+def test_kill_persistproc_command(server):
+    """Test that kill-persistproc command gracefully shuts down the server."""
+    import subprocess
+
+    # 1. Start a managed process to verify server is working
+    start_cmd = f"python {COUNTER_SCRIPT} --num-iterations 0"
+    result = run_cli("start", start_cmd)
+    start_info = extract_json(result.stdout)
+    assert "pid" in start_info
+
+    # 2. Verify server is responding
+    list_result = run_cli("list")
+    list_info = extract_json(list_result.stdout)
+    assert len(list_info["processes"]) == 1
+
+    # 3. Run kill-persistproc command
+    kill_result = run_cli("kill-persistproc", "--format", "json")
+    kill_info = extract_json(kill_result.stdout)
+
+    # 4. Verify it returns the server PID
+    assert "pid" in kill_info["processes"][0]
+    server_pid = kill_info["processes"][0]["pid"]
+    assert isinstance(server_pid, int)
+    assert server_pid > 0
+
+    # 5. Wait for the server to shut down gracefully (poll every 100ms up to 30 seconds)
+    max_wait_time = 30.0
+    poll_interval = 0.1
+    start_time = time.time()
+
+    while time.time() - start_time < max_wait_time:
+        try:
+            # This should fail once the server shuts down
+            run_cli("list")
+            time.sleep(poll_interval)
+        except subprocess.CalledProcessError:
+            # Expected - server has shut down
+            break
+    else:
+        raise AssertionError(f"Server did not shut down within {max_wait_time} seconds")

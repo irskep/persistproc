@@ -226,6 +226,29 @@ class ProcessManager:  # noqa: D101
         command_or_label: str | None = None,
         working_directory: str | None = None,
     ) -> ListProcessesResult:  # noqa: D401
+        # Special case: pid=0 requests server information only
+        if pid == 0:
+            from .process_types import ProcessInfo
+            from .logging_utils import get_current_log_path
+
+            # Get the current server log file path
+            log_path = get_current_log_path()
+            log_path_str = str(log_path) if log_path else None
+
+            server_info = ProcessInfo(
+                pid=os.getpid(),
+                command=["persistproc", "serve"],
+                working_directory=str(self.data_dir),
+                status="running",
+                label="persistproc-server",
+                start_time=None,
+                end_time=None,
+                log_stdout=None,
+                log_stderr=None,
+                log_combined=log_path_str,
+            )
+            return ListProcessesResult(processes=[server_info])
+
         process_snapshot = self._storage.get_processes_values_snapshot()
         filtered_snapshot = self._filter_processes(
             process_snapshot, pid, command_or_label, working_directory

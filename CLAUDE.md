@@ -13,6 +13,8 @@ Key files:
 
 Use `uv run python -m pytest` to run tests. For development, use `uv run python -m pytest -x --maxfail=3` to stop after 3 failures.
 
+There is critical code in tests/conftest.py and tests/helpers.py. Some defaults are changed via env vars.
+
 ## Linting and Type Checking
 
 - Linting: `uv run ruff check`

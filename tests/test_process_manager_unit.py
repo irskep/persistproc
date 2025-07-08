@@ -205,6 +205,21 @@ class TestProcessManagerList:
         assert proc_by_pid[5678].label == "proc2"
         assert proc_by_pid[5678].status == "exited"
 
+    def test_list_with_pid_zero_returns_server_info(self, process_manager):
+        """Test that list with pid=0 returns server ProcessInfo."""
+        with patch("os.getpid", return_value=9999):
+            result = process_manager.list(pid=0)
+
+        # Should return only the server process
+        assert len(result.processes) == 1
+        server_process = result.processes[0]
+
+        # Verify server process data
+        assert server_process.pid == 9999
+        assert server_process.label == "persistproc-server"
+        assert server_process.status == "running"
+        assert server_process.command == ["persistproc", "serve"]
+
 
 class TestProcessManagerListWithStatus:
     """Test ProcessManager.list() method returning status information."""
