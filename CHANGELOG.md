@@ -4,6 +4,12 @@
 
 ## Unreleased
 
+## 0.2.1 - 2025-01-09
+
+### Changed
+
+- Patch release to sync PyPI version with git tag (no code changes)
+
 ## 0.2.0 - 2025-01-08
 
 ### Added
